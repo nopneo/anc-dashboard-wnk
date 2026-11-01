@@ -374,8 +374,9 @@
       <table class="t">
         <tr><th>เดือน</th><th>กลุ่ม Dx</th><th>ปลายทาง</th><th class="n">ครั้ง</th><th class="n">นาที</th></tr>
         {% for r in d.refer.table %}
-        <tr><td>{{ r.month | th_month }}</td>
-          <td>{{ {'O': 'O · ตั้งครรภ์/คลอด', 'Z3x': 'Z32–Z36 · ดูแลครรภ์'}.get(r.chapter, r.chapter) }}</td>
+        <tr><td style="white-space:nowrap">{{ r.month | th_month }}</td>
+          <td><b>{{ r.chapter if r.chapter != 'ไม่ระบุ' else '—' }}</b> · {{ r.chapter_name }}
+            {% if r.dx %}<br><span class="src">{% for x in r.dx[:3] %}{{ x.code3 }} {{ x.name or '' }}{{ ' (' ~ x.n ~ ')' if x.n > 1 }}{{ ' · ' if not loop.last }}{% endfor %}{{ ' · +' ~ (r.dx | length - 3) ~ ' Dx' if r.dx | length > 3 }}</span>{% endif %}</td>
           <td>{{ r.dest_name }}</td><td class="n">{{ r.n }}</td><td class="n">{{ fmt(r.avg_min) }}</td></tr>
         {% endfor %}
       </table>

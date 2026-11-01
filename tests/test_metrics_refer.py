@@ -87,3 +87,26 @@ def test_dest_sorted_and_unnamed():
             dict(ref(3, date(2026, 10, 2), dest="B", dest_name="รพ.บี"), group=None, reason="dx")]
     s = refer_summary(rows, date(2026, 10, 1), date(2026, 10, 31))
     assert s["dest"] == [{"code": "B", "name": "รพ.บี", "n": 2}, {"code": "A", "name": "A", "n": 1}]
+
+
+def test_refer_table_has_chapter_and_dx_names():
+    """ทุกแถวมีชื่อกลุ่มโรค (หมวด ICD-10) และชื่อ Dx ที่อยู่ในแถวนั้น — ไม่เหลือแค่ตัวอักษร K / P / Z"""
+    rows = [dict(ref(1, date(2026, 10, 3), pdx="K359", dx_name="Acute appendicitis"), group=None, reason="dx"),
+            dict(ref(2, date(2026, 10, 4), pdx="K358", dx_name="Acute appendicitis, other"), group=None, reason="dx"),
+            dict(ref(3, date(2026, 10, 5), pdx="K359", dx_name="Acute appendicitis"), group=None, reason="dx"),
+            dict(ref(4, date(2026, 10, 6), pdx="P590", dx_name="Neonatal jaundice"), group=None, reason="dx"),
+            dict(ref(5, date(2026, 10, 7), pdx=None), group=None, reason="registry")]
+    t = {r["chapter"]: r for r in refer_summary(rows, date(2026, 10, 1), date(2026, 10, 31))["table"]}
+    assert t["K"]["chapter_name"] == "โรคระบบย่อยอาหาร"
+    assert t["P"]["chapter_name"] == "ภาวะในระยะปริกำเนิด"
+    assert t["ไม่ระบุ"]["chapter_name"] == "ไม่มี Dx หลัก"
+    # Dx ในแถว เรียงตามจำนวนครั้ง (รหัส 3 หลัก + ชื่อ)
+    assert t["K"]["dx"] == [{"code3": "K35", "name": "Acute appendicitis", "n": 3}]
+    assert t["P"]["dx"][0]["name"] == "Neonatal jaundice" and t["ไม่ระบุ"]["dx"] == []
+
+
+def test_chapter_names_cover_all_letters():
+    from metrics import chapter_name
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        assert chapter_name(letter), letter
+    assert chapter_name("O") == "ตั้งครรภ์/คลอด" and chapter_name("Z3x") == "ดูแลครรภ์ (Z32–Z36)"

@@ -262,6 +262,24 @@ def select_refers(refers, pregs, cfg):
     return out
 
 
+#: ชื่อหมวด ICD-10 ตามตัวอักษรแรกของรหัส (D, H มี 2 หมวดในตัวอักษรเดียว)
+CHAPTER_NAMES = {
+    "A": "โรคติดเชื้อและปรสิต", "B": "โรคติดเชื้อและปรสิต", "C": "เนื้องอก",
+    "D": "เนื้องอก / โรคเลือดและภูมิคุ้มกัน", "E": "โรคต่อมไร้ท่อ โภชนาการ และเมแทบอลิซึม",
+    "F": "ความผิดปกติทางจิตและพฤติกรรม", "G": "โรคระบบประสาท", "H": "โรคตาและหู",
+    "I": "โรคระบบไหลเวียนเลือด", "J": "โรคระบบหายใจ", "K": "โรคระบบย่อยอาหาร", "L": "โรคผิวหนัง",
+    "M": "โรคระบบกล้ามเนื้อและกระดูก", "N": "โรคระบบสืบพันธุ์และทางเดินปัสสาวะ", "O": "ตั้งครรภ์/คลอด",
+    "P": "ภาวะในระยะปริกำเนิด", "Q": "รูปผิดปกติแต่กำเนิด", "R": "อาการและอาการแสดงผิดปกติ",
+    "S": "การบาดเจ็บ", "T": "การบาดเจ็บ / การเป็นพิษ", "U": "รหัสใช้เป็นการเฉพาะ",
+    "V": "สาเหตุภายนอก", "W": "สาเหตุภายนอก", "X": "สาเหตุภายนอก", "Y": "สาเหตุภายนอก",
+    "Z": "ปัจจัยที่มีผลต่อสถานะสุขภาพ", "Z3x": "ดูแลครรภ์ (Z32–Z36)", "ไม่ระบุ": "ไม่มี Dx หลัก",
+}
+
+
+def chapter_name(chapter):
+    return CHAPTER_NAMES.get(chapter, chapter)
+
+
 def dx_chapter(pdx):
     code = (pdx or "").replace(".", "").strip().upper()
     if not code:
@@ -296,16 +314,24 @@ def refer_summary(refers, d1, d2):
         dcode = r.get("dest") or ""
         dname = r.get("dest_name") or dcode or "ไม่ระบุ"
         dest.setdefault(dcode, {"code": dcode, "name": dname, "n": 0})["n"] += 1
-        table[(month, dx_chapter(r.get("pdx")), dname)].append(r.get("minutes"))
+        table[(month, dx_chapter(r.get("pdx")), dname)].append(r)
     total = len(refers)
     top = sorted(dx.values(), key=lambda d: (-d["n"], d["code3"]))[:10]
     for d in top:
         d["pct"] = pct(d["n"], total)
     rows = []
-    for (month, chapter, dname), mins in sorted(table.items()):
-        m = [x for x in mins if x is not None]
-        rows.append({"month": month, "chapter": chapter, "dest_name": dname, "n": len(mins),
-                     "avg_min": round(sum(m) / len(m), 1) if m else None})
+    for (month, chapter, dname), rs in sorted(table.items()):
+        m = [r["minutes"] for r in rs if r.get("minutes") is not None]
+        codes = {}
+        for r in rs:
+            c3 = (r.get("pdx") or "").replace(".", "").strip().upper()[:3]
+            if c3:
+                d = codes.setdefault(c3, {"code3": c3, "name": r.get("dx_name"), "n": 0})
+                d["n"] += 1
+                d["name"] = d["name"] or r.get("dx_name")
+        rows.append({"month": month, "chapter": chapter, "chapter_name": chapter_name(chapter),
+                     "dx": sorted(codes.values(), key=lambda d: (-d["n"], d["code3"])),
+                     "dest_name": dname, "n": len(rs), "avg_min": round(sum(m) / len(m), 1) if m else None})
     return {"monthly": list(monthly.values()), "top_dx": top,
             "dest": sorted(dest.values(), key=lambda d: (-d["n"], d["code"])), "table": rows, "total": total}
 
