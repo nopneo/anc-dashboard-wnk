@@ -75,6 +75,27 @@ def thai_date(d):
     return f"{d.day} {TH_MONTHS[d.month - 1]} {d.year + 543}" if d else "—"
 
 
+TH_MONTHS_FULL = ("มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม",
+                  "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม")
+TH_WEEKDAYS = ("จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์")
+
+
+def thai_full_date(d):
+    """date(2026, 10, 31) → 'วันเสาร์ที่ 31 ตุลาคม 2569'"""
+    return f"วัน{TH_WEEKDAYS[d.weekday()]}ที่ {d.day} {TH_MONTHS_FULL[d.month - 1]} {d.year + 543}"
+
+
+def range_presets(today=None):
+    """ปุ่มช่วงเวลาบนหัวหน้า: เดือนนี้ · เดือนที่แล้ว · ปีงบนี้ · ปีงบที่แล้ว"""
+    today = today or date.today()
+    m1 = today.replace(day=1)
+    pm_end = m1 - timedelta(days=1)
+    fy = _fy_start(today)
+    out = [("เดือนนี้", m1, today), ("เดือนที่แล้ว", pm_end.replace(day=1), pm_end),
+           ("ปีงบนี้", fy, today), ("ปีงบที่แล้ว", fy.replace(year=fy.year - 1), fy - timedelta(days=1))]
+    return [{"label": l, "d1": a.isoformat(), "d2": b.isoformat()} for l, a, b in out]
+
+
 @app.template_filter("th_month")
 def th_month(ym):
     """'2026-03' → 'มี.ค. 69'"""
@@ -280,7 +301,8 @@ def _audit_flags():
 def dashboard():
     d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
     return render_template("dashboard.html", d=build_context(d1, d2), labels=metrics.IND_LABELS,
-                           print_mode=request.args.get("print") == "1")
+                           print_mode=request.args.get("print") == "1", presets=range_presets(),
+                           today_label=thai_full_date(date.today()))
 
 
 @app.route("/api/data.json")

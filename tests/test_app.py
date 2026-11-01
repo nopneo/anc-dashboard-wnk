@@ -174,3 +174,30 @@ def test_refer_failure_shows_dash_not_zero(client, fake_data, monkeypatch):
     assert "ไม่มี refer ในช่วงนี้" not in html
     assert html.count("ดึงข้อมูลไม่ได้") >= 4          # ส่วน 6, 7, 8, 9
     assert '<div class="v">—</div><div class="u">ครั้ง</div>' in html
+
+
+# ---------- DB_color redesign ----------
+
+def test_thai_full_date():
+    assert appmod.thai_full_date(date(2026, 10, 31)) == "วันเสาร์ที่ 31 ตุลาคม 2569"
+
+
+def test_range_presets():
+    p = appmod.range_presets(date(2026, 11, 15))
+    assert [x["label"] for x in p] == ["เดือนนี้", "เดือนที่แล้ว", "ปีงบนี้", "ปีงบที่แล้ว"]
+    assert (p[0]["d1"], p[0]["d2"]) == ("2026-11-01", "2026-11-15")
+    assert (p[1]["d1"], p[1]["d2"]) == ("2026-10-01", "2026-10-31")
+    assert (p[2]["d1"], p[3]["d1"], p[3]["d2"]) == ("2026-10-01", "2025-10-01", "2026-09-30")
+
+
+def test_active_preset_pill(client, fake_data):
+    html = _html(client)                                   # 2026-01-01..2026-06-30 ไม่ตรง preset ใด
+    assert 'class="pill on"' not in html
+    p = appmod.range_presets(date.today())[2]
+    html = _html(client, f"/?d1={p['d1']}&d2={p['d2']}")
+    assert 'class="pill on"' in html and "ปีงบนี้</a>" in html
+
+
+def test_quick_menu_hidden_in_print(client, fake_data):
+    assert "เมนูด่วน" in _html(client)
+    assert "เมนูด่วน" not in _html(client, "/?d1=2026-01-01&d2=2026-06-30&print=1")

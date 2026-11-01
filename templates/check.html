@@ -5,38 +5,37 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ตรวจข้อมูลก่อนใช้ — ANC Dashboard</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ css_v }}">
+<meta name="theme-color" content="#0b2e8a">
 <style>
-  .st-ok { color: var(--ok); font-weight: 700; } .st-warn { color: var(--warn); font-weight: 700; }
-  .st-bad { color: var(--bad); font-weight: 700; }
   .found { font-size: 13px; color: var(--muted); }
   .confirm { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  .confirm button, a.btn { font-family: 'Kanit'; font-size: 16px; border: 0; border-radius: 12px; padding: 8px 18px;
-    background: var(--pink-700); color: #fff; cursor: pointer; text-decoration: none; }
-  a.btn.light { background: #fff; color: var(--pink-700); border: 1px solid var(--pink-200); }
 </style>
 </head>
 <body>
-<div class="sheet">
+<div class="wrap">
+  <header class="hdr">
+    <div class="logo"><img src="{{ logo_url }}" alt="ตรา{{ hospital }}"></div>
+    <div class="title"><h1>{{ hospital }}</h1><h2>ตรวจข้อมูลก่อนใช้ <span>· Data Audit · ANC Dashboard</span></h2></div>
+    <div class="right"><a class="btn white" href="{{ url_for('dashboard') }}">← กลับแดชบอร์ด</a></div>
+  </header>
 {% if lan_only %}
-  <section class="block"><header><span class="t">ตรวจข้อมูลก่อนใช้</span></header>
-    <p>หน้านี้เปิดได้เฉพาะจากเครื่องในเครือข่ายโรงพยาบาล (หรือผู้ดูแลตั้ง ANC_CHECK_OPEN=1)</p></section>
+  <section class="panel"><div class="ph"><span class="ic">🔒</span><h3>เปิดได้เฉพาะในโรงพยาบาล</h3></div>
+    <div class="pb"><p>หน้านี้เปิดได้เฉพาะจากเครื่องในเครือข่ายโรงพยาบาล (หรือผู้ดูแลตั้ง ANC_CHECK_OPEN=1)</p></div></section>
 {% else %}
-  <section class="block">
-    <header><span class="no">✓</span>
-      <span><span class="t">ตรวจข้อมูลก่อนใช้ (Data Audit)</span>
-        <span class="st">{{ hospital }} · {{ period }} · ครรภ์ลงทะเบียนในช่วง {{ c.n_pregs }} ราย</span></span></header>
-    <form class="toolbar" method="get" style="padding:0">
-      <label>ตั้งแต่ <input type="date" name="d1" value="{{ d1 }}"></label>
-      <label>ถึง <input type="date" name="d2" value="{{ d2 }}"></label>
+  <div class="filters">
+    <span class="period">ช่วงที่ตรวจ <b>{{ period }}</b> · ครรภ์ลงทะเบียนในช่วง {{ c.n_pregs }} ราย</span>
+    <form method="get">
+      <input type="date" name="d1" value="{{ d1 }}" aria-label="ตั้งแต่">
+      <input type="date" name="d2" value="{{ d2 }}" aria-label="ถึง">
       <button type="submit">ตรวจ</button>
-      <a class="dl" href="{{ url_for('dashboard') }}">← กลับแดชบอร์ด</a>
     </form>
-    <p class="hint">รหัสใน HOSxP ของแต่ละโรงพยาบาลไม่เหมือนกัน ถ้าไม่ตรง ตัวเลขจะเพี้ยนโดยไม่มีข้อความเตือน —
-      ตรวจทุกข้อด้านล่าง แก้ค่า env ใน .env แล้วรีสตาร์ตแอป · หน้านี้แสดงเฉพาะจำนวนนับ ไม่มีข้อมูลรายคน</p>
-  </section>
+  </div>
+  <p class="hint" style="margin-top:0">รหัสใน HOSxP ของแต่ละโรงพยาบาลไม่เหมือนกัน ถ้าไม่ตรง ตัวเลขจะเพี้ยนโดยไม่มีข้อความเตือน —
+    ตรวจทุกข้อด้านล่าง แก้ค่า env ใน .env แล้วรีสตาร์ตแอป · หน้านี้แสดงเฉพาะจำนวนนับ ไม่มีข้อมูลรายคน</p>
 
-  <section class="block">
-    <header><span class="no">1</span><span class="t">รหัสที่แอปใช้ vs พบในข้อมูล</span></header>
+  <section class="panel">
+    <div class="ph"><span class="ic">🧩</span><h3>รหัสที่แอปใช้ vs พบในข้อมูล</h3></div>
+    <div class="pb">
     <div class="scroll">
     <table class="t">
       <tr><th>รายการ</th><th>แอปใช้</th><th>พบในข้อมูล (จำนวน)</th><th>ผล</th><th>ค่า env</th></tr>
@@ -44,48 +43,55 @@
       <tr><td><b>{{ i.title }}</b><div class="found">{{ i.hint }}</div></td>
         <td>{{ i.app_uses }}</td>
         <td class="found">{% for f in i.found %}{{ f.code }}{% if f.name %} {{ f.name }}{% endif %} ({{ '{:,}'.format(f.n) }}){{ ' · ' if not loop.last }}{% else %}—{% endfor %}</td>
-        <td class="st-{{ i.status }}">{{ {'ok': '✔ ตรง', 'warn': '⚠ ตรวจ', 'bad': '✘ แก้'}[i.status] }}</td>
+        <td><span class="st {{ {'ok': 'ok', 'warn': 'amber', 'bad': 'no'}[i.status] }}">{{ {'ok': '✔ ตรง', 'warn': '⚠ ตรวจ', 'bad': '✘ แก้'}[i.status] }}</span></td>
         <td><code>{{ i.env }}</code></td></tr>
       {% endfor %}
     </table>
     </div>
     {% if pcu_err %}<div class="err" style="margin-top:10px">ไฟล์ pcu_map.csv ไม่ถูกต้อง: {{ pcu_err }}</div>{% endif %}
-    <div class="confirm"><a class="btn light" href="{{ url_for('pcu_map_template') }}">⬇ แม่แบบ pcu_map.csv</a>
-      <span class="hint">รหัสหมู่บ้านที่พบในทะเบียนฝากครรภ์ 1 ปีล่าสุด + จำนวน · เติม pcu_hospcode / pcu_name แล้วบันทึกเป็น pcu_map.csv</span></div>
-  </section>
-
-  <section class="block">
-    <header><span class="no">2</span><span class="t">ความครบของข้อมูล</span></header>
-    <table class="t">
-      <tr><th>รายการ</th><th class="n">ร้อยละ</th><th class="n">มี/ทั้งหมด</th><th>ผล</th></tr>
-      {% for x in c.completeness %}
-      <tr><td>{{ x.title }}</td><td class="n">{{ x.pct if x.pct is not none else '—' }}{{ '%' if x.pct is not none }}</td>
-        <td class="n">{{ x.n }}/{{ x.den }}</td>
-        <td class="st-{{ x.status }}">{{ {'ok': '✔', 'warn': '⚠', 'bad': '✘'}[x.status] }}</td></tr>
-      {% endfor %}
-    </table>
-  </section>
-
-  <section class="block">
-    <header><span class="no">3</span><span class="t">ยืนยันการตรวจ</span></header>
-    <p>หลังตรวจทุกข้อและทดลองเทียบกับรายงานเดิมของงานฝากครรภ์ 1–2 สัปดาห์แล้ว ให้ผู้ดูแลตั้ง <code>ANC_DATA_AUDITED=1</code>
-      (ซ่อนแถบเตือนสำหรับทุกคน) หรือกดปุ่มนี้เพื่อซ่อนแถบเตือนในเบราว์เซอร์นี้เท่านั้น</p>
-    <div class="confirm">
-      <button type="button" id="ok">ยืนยันว่าตรวจแล้ว</button>
-      <button type="button" id="undo" style="background:#9a7484">ยกเลิกการยืนยัน</button>
-      <span id="msg" class="hint"></span>
+    <div class="confirm"><a class="btn blue" href="{{ url_for('pcu_map_template') }}">⬇ แม่แบบ pcu_map.csv</a>
+      <span class="hint" style="margin:0">รหัสหมู่บ้านที่พบในทะเบียนฝากครรภ์ 1 ปีล่าสุด + จำนวน · เติม pcu_hospcode / pcu_name แล้วบันทึกเป็น pcu_map.csv (CSV UTF-8)</span></div>
     </div>
-    <script>
-      (function () {
-        var key = 'anc-audited:' + {{ hospital | tojson }};
-        var msg = document.getElementById('msg');
-        function show() { try { msg.textContent = localStorage.getItem(key) ? 'เบราว์เซอร์นี้ยืนยันแล้ว' : 'ยังไม่ได้ยืนยัน'; } catch (e) { msg.textContent = 'เบราว์เซอร์นี้บันทึกค่าไม่ได้ — ใช้ ANC_DATA_AUDITED=1'; } }
-        document.getElementById('ok').onclick = function () { try { localStorage.setItem(key, new Date().toISOString()); } catch (e) {} show(); };
-        document.getElementById('undo').onclick = function () { try { localStorage.removeItem(key); } catch (e) {} show(); };
-        show();
-      })();
-    </script>
   </section>
+
+  <div class="grid g-11">
+    <section class="panel">
+      <div class="ph"><span class="ic">📋</span><h3>ความครบของข้อมูล</h3></div>
+      <div class="pb">
+      <table class="t">
+        <tr><th>รายการ</th><th class="n">ร้อยละ</th><th class="n">มี/ทั้งหมด</th><th>ผล</th></tr>
+        {% for x in c.completeness %}
+        <tr><td>{{ x.title }}</td><td class="n">{{ x.pct if x.pct is not none else '—' }}{{ '%' if x.pct is not none }}</td>
+          <td class="n">{{ x.n }}/{{ x.den }}</td>
+          <td><span class="st {{ {'ok': 'ok', 'warn': 'amber', 'bad': 'no'}[x.status] }}">{{ {'ok': '✔', 'warn': '⚠', 'bad': '✘'}[x.status] }}</span></td></tr>
+        {% endfor %}
+      </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><span class="ic">✅</span><h3>ยืนยันการตรวจ</h3></div>
+      <div class="pb">
+      <p>หลังตรวจทุกข้อและทดลองเทียบกับรายงานเดิมของงานฝากครรภ์ 1–2 สัปดาห์แล้ว ให้ผู้ดูแลตั้ง <code>ANC_DATA_AUDITED=1</code>
+        (ซ่อนแถบเตือนสำหรับทุกคน) หรือกดปุ่มนี้เพื่อซ่อนแถบเตือนในเบราว์เซอร์นี้เท่านั้น</p>
+      <div class="confirm">
+        <button type="button" class="btn blue" id="ok">ยืนยันว่าตรวจแล้ว</button>
+        <button type="button" class="btn white" id="undo">ยกเลิกการยืนยัน</button>
+        <span id="msg" class="hint" style="margin:0"></span>
+      </div>
+      </div>
+    </section>
+  </div>
+  <script>
+    (function () {
+      var key = 'anc-audited:' + {{ hospital | tojson }};
+      var msg = document.getElementById('msg');
+      function show() { try { msg.textContent = localStorage.getItem(key) ? 'เบราว์เซอร์นี้ยืนยันแล้ว' : 'ยังไม่ได้ยืนยัน'; } catch (e) { msg.textContent = 'เบราว์เซอร์นี้บันทึกค่าไม่ได้ — ใช้ ANC_DATA_AUDITED=1'; } }
+      document.getElementById('ok').onclick = function () { try { localStorage.setItem(key, new Date().toISOString()); } catch (e) {} show(); };
+      document.getElementById('undo').onclick = function () { try { localStorage.removeItem(key); } catch (e) {} show(); };
+      show();
+    })();
+  </script>
 {% endif %}
 </div>
 </body>
