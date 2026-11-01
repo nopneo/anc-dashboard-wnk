@@ -122,7 +122,7 @@ refer ที่นับ = `referout` ในช่วง ที่เข้า�
 `DB_HOST DB_PORT DB_NAME DB_USER DB_PASS PORT ANC_DB_MODE ANC_SSH_HOST ANC_DB_TIMEOUT`
 `ANC_DT_VACCINE_CODES=201,202,203,204,205` · `ANC_HCT_LAB_IDS=` (ว่าง = หาจาก `anc_lab` ชื่อมี Hct) · `ANC_HCT_CUTOFF=33` · `ANC_HCT_LATE_GA=28`
 `ANC_LBW_GRAMS=2500` · `ANC_POSTPARTUM_DAYS=42` · `ANC_REFER_DX_PREFIXES=O,Z32,Z33,Z34,Z35,Z36`
-`ANC_WAIT_FROM_COL / ANC_WAIT_TO_COL` (คอลัมน์ service_time — ค่าเริ่มต้นเดียวกับที่ er_dashboard ใช้คำนวณเวลารอแพทย์) · `ANC_WAIT_MAX_MIN=240`
+`ANC_WAIT_FROM_COL=vsttime` · `ANC_WAIT_TO_COL=service5` (คอลัมน์ "เริ่มตรวจ" เดียวกับที่ er_dashboard ใช้; รับเฉพาะ vsttime หรือ service1–20) · `ANC_WAIT_MAX_MIN=240`
 `ANC_TARGET_EARLY12=75 ANC_TARGET_5VISIT=75 ANC_TARGET_DT=90 ANC_TARGET_DENTAL=50 ANC_TARGET_ANEMIA=14 ANC_TARGET_LBW=7`
 `ANC_PCU_MAP=pcu_map.csv` · `ANC_DATA_AUDITED=0` · `ANC_CACHE_SECONDS=600`
 
