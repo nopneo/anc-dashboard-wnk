@@ -220,7 +220,7 @@
     </section>
   </div>
 
-  <!-- ===================================== 3. indicators | 8. destinations -->
+  <!-- ===================================== 3. indicators | 8. destinations + 7. top dx -->
   <div class="grid g-231">
     <section class="panel">
       <div class="ph"><span class="ic">🏆</span><h3>ตัวชี้วัดคุณภาพ</h3><small>ANC 10 ตัว</small></div>
@@ -280,11 +280,28 @@
       {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
       </div>
     </section>
+    <section class="panel">
+      <div class="ph"><span class="ic">🩺</span><h3>Top 10 Refer Diagnoses</h3><small>Dx หลัก 3 หลัก · {{ '—' if rerr else d.refer.total }} ครั้ง</small></div>
+      <div class="pb">
+      {{ sec_error('refer') }}
+      {% if rerr %}
+      {% elif d.refer.top_dx %}
+      {% set mx = d.refer.top_dx[0].n %}
+      <ol class="plist">
+        {% for x in d.refer.top_dx %}
+        <li><span class="nm" title="{{ x.name or x.code3 }}">{{ x.name or x.code3 }} <span class="code">[{{ x.code3 }}]</span></span>
+          <span class="vl">{{ x.n }} · {{ x.pct }}%</span>
+          <div class="track"><span style="width:{{ (100 * x.n / mx) | round(1) }}%"></span></div></li>
+        {% endfor %}
+      </ol>
+      {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
+      </div>
+    </section>
     </div>
   </div>
 
-  <!-- ===================================== 6. refer monthly | 7. top dx -->
-  <div class="grid g-21">
+  <!-- ============================================================ 6. refer monthly -->
+  <div class="grid">
     <section class="panel">
       <div class="ph"><span class="ic">🚑</span><h3>Refer รายเดือน</h3>
         <small>แยกกลุ่มอายุ · ทะเบียนฝากครรภ์ถึงหลังคลอด {{ d.postpartum_days }} วัน + Dx O/Z32–Z36</small></div>
@@ -317,23 +334,6 @@
       </div>
     </section>
 
-    <section class="panel">
-      <div class="ph"><span class="ic">🩺</span><h3>Top 10 Refer Diagnoses</h3><small>Dx หลัก 3 หลัก · {{ '—' if rerr else d.refer.total }} ครั้ง</small></div>
-      <div class="pb">
-      {{ sec_error('refer') }}
-      {% if rerr %}
-      {% elif d.refer.top_dx %}
-      {% set mx = d.refer.top_dx[0].n %}
-      <ol class="plist">
-        {% for x in d.refer.top_dx %}
-        <li><span class="nm" title="{{ x.name or x.code3 }}">{{ x.name or x.code3 }} <span class="code">[{{ x.code3 }}]</span></span>
-          <span class="vl">{{ x.n }} · {{ x.pct }}%</span>
-          <div class="track"><span style="width:{{ (100 * x.n / mx) | round(1) }}%"></span></div></li>
-        {% endfor %}
-      </ol>
-      {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
-      </div>
-    </section>
   </div>
 
   <!-- ============================================================ 5. PCU -->
