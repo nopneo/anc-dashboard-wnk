@@ -13,12 +13,18 @@
 
 ## นิยามตัวชี้วัด (หน่วยนับ = ครรภ์)
 
-| ตัวชี้วัด | นิยาม | 43 แฟ้ม | ตาราง HOSxP |
-|---|---|---|---|
-| ฝากครรภ์รายใหม่ | ลงทะเบียนครรภ์ในช่วง | ANC | `person_anc.anc_register_date` |
-| ครั้งบริการ ANC / เฉลี่ยต่อเดือน | visit ANC ที่ รพ. ในช่วง | ANC | `person_anc_service` |
-| ฝากครรภ์ก่อน 12 wk | ANC ครั้งแรก (รวมที่อื่น) GA ≤ 12 ÷ ครรภ์ที่คลอดในช่วง | ANC.GA | `person_anc_service.pa_week`, `person_anc_other_precare` |
-| ANC ครบ 5 ครั้ง | มี visit ทุกช่วง GA ≤12, 13–20, 21–26, 27–32, 33–40 ÷ ครรภ์ที่คลอด | ANC.GA + LABOR | เหมือนข้างบน |
+**ข้อมูลบริการ** (การ์ดด้านบน ไม่ใช่ตัวชี้วัด): ฝากครรภ์รายใหม่ (`person_anc.anc_register_date` ในช่วง) ·
+ครั้งบริการ ANC และเฉลี่ยต่อเดือน (`person_anc_service` ในช่วง)
+
+ตัวชี้วัด 5 ตัวแรกตามเอกสารในโฟลเดอร์ `kpi/` (กรมอนามัย / HDC)
+
+| ตัวชี้วัด | นิยาม | เป้า | 43 แฟ้ม | ตาราง HOSxP |
+|---|---|---|---|---|
+| ฝากครรภ์ครั้งแรก ≤ 12 wk | ANC ครั้งแรก (รวมที่อื่น) GA ≤ 12 ÷ ครรภ์ที่คลอดในช่วง | ≥ 75 | ANC.GA | `person_anc_service.pa_week`, `person_anc_other_precare` |
+| ANC ครบ 5 ครั้งตามเกณฑ์ | มี visit ทุกช่วง GA ≤12, 13–<20, 20–<26, 26–<32, 32–40 ÷ ครรภ์ที่คลอด | ≥ 75 | ANC.GA + LABOR | เหมือนข้างบน |
+| ดูแลหลังคลอดครบ 3 ครั้ง | ได้ดูแลวันที่ 1–7, 8–15, 16–42 หลังคลอดครบ ÷ คลอดในช่วงและพ้น 42 วัน | ≥ 75 | POSTNATAL | `person_anc_preg_care.care_date`, `person_anc.post_labor_service1–3_date` |
+| ฝากครรภ์คุณภาพ (HDC) | ครบ 5 กิจกรรม: CBC/Hct/Hb · ธาลัสซีเมีย · อัลตราซาวด์ 88.78 · ดาวน์ Z36.0/Z36.2 · เบาหวาน (GCT/OGTT/FBS/DTX หรือ Z13.1) ÷ ครรภ์ที่คลอด | ≥ 70 (ปีงบ 2570) | LABFU, PRENATAL, PROCEDURE_OPD, DIAGNOSIS_OPD | `lab_head`/`lab_order`, `person_anc_lab`, `thalassaemia_result`, `doctor_operation`, `ovstdiag` |
+| ยาเม็ดไอโอดีน (Workload) | ได้ยาที่มีไอโอดีน (รหัสยา 24 หลัก `ANC_IODINE_DIDSTD`) ระหว่างตั้งครรภ์ ÷ ครรภ์ที่มาฝากครรภ์ที่ รพ. ในช่วง | ไม่กำหนด | DRUG_OPD.DIDSTD | `opitemrece`, `drugitems.did` |
 | วัคซีน dT | ได้ dT (รหัส `ANC_DT_VACCINE_CODES`) ระหว่าง LMP–คลอด ÷ ครรภ์ที่คลอด | EPI | `ovst_vaccine`, `person_vaccine`, `person_anc.vaccine_dtanc*_date` |
 | ตรวจช่องปาก | ตรวจฟันระหว่างตั้งครรภ์ ÷ ครรภ์ที่คลอด | DENTAL | `dtmain.pregnancy='Y'`, `person_anc.dental_tx_date` |
 | โลหิตจางใกล้คลอด | Hct < 33% ที่ GA ≥ 28 ÷ ครรภ์ที่คลอดและมีผล | PRENATAL.HCT_RESULT | `person_anc_lab`, `person_anc.blood_hct_result` |

@@ -30,7 +30,8 @@ def test_age_groups():
 
 
 def test_ga_bucket_edges():
-    assert [ga_bucket(w) for w in (4, 12, 13, 20, 21, 26, 27, 32, 33, 40, 41, None)] == \
+    # ตามเอกสาร KPI: ≤12 · 13–<20 · 20–<26 · 26–<32 · 32–40
+    assert [ga_bucket(w) for w in (4, 12, 13, 19, 20, 25, 26, 31, 32, 40, 41, None)] == \
         [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, None, None]
 
 
@@ -157,3 +158,37 @@ def test_monthly_trend():
     assert [m["month"] for m in t] == ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"]
     assert (t[0]["new"], t[0]["visits"], t[2]["new"], t[2]["visits"], t[1]["visits"]) == (1, 1, 1, 1, 0)
     assert t[0]["label"] == "ม.ค."
+
+
+# ---------- KPI จากโฟลเดอร์ kpi ----------
+
+def test_postnatal_three_windows():
+    """ครั้งที่ 1 วันที่ 1–7 · ครั้งที่ 2 วันที่ 8–15 · ครั้งที่ 3 วันที่ 16–42 นับจากวันคลอด"""
+    lab = date(2026, 3, 1)
+    p = [preg(1, labor=lab), preg(2, labor=lab), preg(3, labor=lab), preg(4, labor=date(2026, 6, 20))]
+    pnc = [{"anc_id": 1, "date": lab + timedelta(days=d)} for d in (3, 10, 30)] +           [{"anc_id": 2, "date": lab + timedelta(days=d)} for d in (0, 10, 30)] +           [{"anc_id": 3, "date": lab + timedelta(days=d)} for d in (7, 8, 42)] +           [{"anc_id": 4, "date": date(2026, 6, 22)}]
+    r = indicators(p, [], [], [], D1, D2, CFG, pnc=pnc)["postnatal"]
+    # ครรภ์ 4 คลอด 20 มิ.ย. ยังไม่พ้น 42 วัน ณ 30 มิ.ย. → ไม่อยู่ในตัวหาร · ครรภ์ 2 วันที่ 0 ไม่นับ
+    assert (r["num"], r["den"], r["target"]) == (2, 3, 75)
+
+
+def test_iodine_among_anc_attenders():
+    p = [preg(1, labor=None), preg(2, labor=None), preg(3, labor=None), preg(4, labor=None)]
+    p[0]["has_iodine"] = True
+    p[3]["has_iodine"] = True
+    v = [visit(1, 10, d=date(2026, 2, 1)), visit(2, 10, d=date(2026, 2, 1)),
+         visit(3, 9, precare=True, d=date(2026, 2, 1)), visit(4, 10, d=date(2025, 12, 1))]
+    r = indicators(p, v, [], [], D1, D2, CFG)["iodine"]
+    # ตัวหาร = ครรภ์ที่มาฝากครรภ์ที่ รพ. ในช่วง (ครรภ์ 3 ฝากที่อื่น, ครรภ์ 4 มานอกช่วง)
+    assert (r["num"], r["den"], r["value"], r["ok"]) == (1, 2, 50.0, None)
+
+
+def test_quality_anc_all_five_activities():
+    full = {"q_cbc": True, "q_thal": True, "q_us": True, "q_down": True, "q_dm": True}
+    p = [dict(preg(1), **full), dict(preg(2), **dict(full, q_down=False)), dict(preg(3), **full)]
+    ind = indicators(p, [], [], [], D1, D2, CFG)
+    r = ind["quality"]
+    assert (r["num"], r["den"], r["value"], r["target"]) == (2, 3, 66.7, 70) and r["ok"] is False
+    comp = ind["quality_parts"]
+    assert [c["key"] for c in comp] == ["q_cbc", "q_thal", "q_us", "q_down", "q_dm"]
+    assert next(c for c in comp if c["key"] == "q_down")["rate"]["num"] == 2

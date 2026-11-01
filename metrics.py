@@ -11,9 +11,15 @@ import calendar
 from collections import defaultdict
 from datetime import timedelta
 
-#: ช่วงอายุครรภ์ (สัปดาห์) ของ ANC ครบ 5 ครั้งคุณภาพ
-GA_BUCKETS = ((0, 12), (13, 20), (21, 26), (27, 32), (33, 40))
-IND_KEYS = ("new", "visits", "per_month", "early12", "visit5", "dt", "dental", "anemia", "lbw", "wait")
+#: ช่วงอายุครรภ์ (สัปดาห์) ของ ANC ครบ 5 ครั้งตามเกณฑ์ (เอกสาร KPI): ≤12 · 13–<20 · 20–<26 · 26–<32 · 32–40
+GA_BUCKETS = ((0, 12), (13, 19), (20, 25), (26, 31), (32, 40))
+#: ดูแลหลังคลอดครบ 3 ครั้ง: วันที่ 1–7 · 8–15 · 16–42 นับจากวันคลอด
+PNC_WINDOWS = ((1, 7), (8, 15), (16, 42))
+#: กิจกรรมฝากครรภ์คุณภาพ (HDC) — คีย์ใน Pregnancy
+QUALITY_PARTS = (("q_cbc", "CBC / Hct / Hb"), ("q_thal", "คัดกรองธาลัสซีเมีย"), ("q_us", "อัลตราซาวด์"),
+                 ("q_down", "คัดกรองดาวน์"), ("q_dm", "คัดกรองเบาหวาน"))
+IND_KEYS = ("new", "visits", "per_month", "early12", "visit5", "postnatal", "quality", "iodine",
+            "dt", "dental", "anemia", "lbw", "wait")
 AGE_GROUPS = ("teen", "repro", "elder")
 #: ตัวชี้วัดที่ค่ายิ่งต่ำยิ่งดี
 LOWER_BETTER = {"anemia", "lbw"}
@@ -130,7 +136,36 @@ def rate_lbw(infants, d1, d2, cfg):
     return _rate("lbw", sum(1 for w in live if w < cfg.lbw_grams), len(live), cfg)
 
 
-def indicators(pregs, visits, infants, waits, d1, d2, cfg):
+def rate_postnatal(pregs, pnc, d1, d2, cfg):
+    """ตัวหาร = คลอดในช่วงและพ้นหลังคลอด 42 วัน ณ d2 · ตัวตั้ง = ได้ดูแลครบทั้ง 3 ช่วง"""
+    days = defaultdict(set)
+    by = {p["anc_id"]: p for p in pregs}
+    for c in pnc:
+        p = by.get(c["anc_id"])
+        if p and p.get("labor_date") and c.get("date"):
+            days[c["anc_id"]].add((c["date"] - p["labor_date"]).days)
+    den = [p for p in _delivered(pregs, d1, d2) if (d2 - p["labor_date"]).days >= PNC_WINDOWS[-1][1]]
+    num = sum(1 for p in den if all(any(lo <= x <= hi for x in days[p["anc_id"]]) for lo, hi in PNC_WINDOWS))
+    return _rate("postnatal", num, len(den), cfg)
+
+
+def rate_iodine(pregs, visits, d1, d2, cfg):
+    """ตัวหาร = ครรภ์ที่มาฝากครรภ์ที่ รพ. ในช่วง (Workload) · ตัวตั้ง = ได้ยาเม็ดที่มีไอโอดีนระหว่างตั้งครรภ์"""
+    came = {v["anc_id"] for v in visits if not v.get("precare") and _in(v.get("date"), d1, d2)}
+    den = [p for p in pregs if p["anc_id"] in came]
+    return _rate("iodine", sum(1 for p in den if p.get("has_iodine")), len(den), cfg)
+
+
+def quality(delivered, cfg):
+    """ฝากครรภ์คุณภาพ (HDC): ได้ครบทั้ง 5 กิจกรรม · คืน (อัตรารวม, [อัตรารายกิจกรรม])"""
+    keys = [k for k, _ in QUALITY_PARTS]
+    total = _rate("quality", sum(1 for p in delivered if all(p.get(k) for k in keys)), len(delivered), cfg)
+    parts = [{"key": k, "label": label, "rate": _rate(k, sum(1 for p in delivered if p.get(k)), len(delivered), cfg)}
+             for k, label in QUALITY_PARTS]
+    return total, parts
+
+
+def indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=()):
     vmap = _by_anc(visits)
     delivered = _delivered(pregs, d1, d2)
     n_visits = sum(1 for v in visits if not v.get("precare") and _in(v.get("date"), d1, d2))
@@ -138,12 +173,17 @@ def indicators(pregs, visits, infants, waits, d1, d2, cfg):
     months = months_in_range(d1, d2)
     wait = _count(round(sum(waits) / len(waits), 1) if waits else None)
     wait["den"] = len(waits)
+    q_total, q_parts = quality(delivered, cfg)
     return {
         "new": _count(sum(1 for p in pregs if _in(p.get("register_date"), d1, d2))),
         "visits": _count(n_visits),
         "per_month": _count(round(n_visits / months, 1) if months else None),
         "early12": rate_early12(delivered, vmap, cfg),
         "visit5": rate_visit5(delivered, vmap, cfg),
+        "postnatal": rate_postnatal(pregs, pnc, d1, d2, cfg),
+        "quality": q_total,
+        "quality_parts": q_parts,
+        "iodine": rate_iodine(pregs, visits, d1, d2, cfg),
         "dt": rate_flag("dt", "has_dt", delivered, cfg),
         "dental": rate_flag("dental", "has_dental", delivered, cfg),
         "anemia": rate_anemia(delivered, cfg),
@@ -334,9 +374,13 @@ def unmapped_villages(pregs, pcu_map, cfg):
 
 # ---------- Alert ----------
 
-IND_LABELS = {"early12": "ฝากครรภ์ก่อน 12 wk", "visit5": "ANC ครบ 5 ครั้ง", "dt": "วัคซีน dT",
+IND_LABELS = {"early12": "ฝากครรภ์ก่อน 12 wk", "visit5": "ANC ครบ 5 ครั้ง", "postnatal": "ดูแลหลังคลอดครบ 3 ครั้ง",
+              "quality": "ฝากครรภ์คุณภาพ", "iodine": "ยาเม็ดไอโอดีน", "dt": "วัคซีน dT",
               "dental": "ตรวจช่องปาก", "anemia": "โลหิตจางใกล้คลอด", "lbw": "ทารก LBW"}
 _ACTIONS = {"early12": "ค้นหาหญิงตั้งครรภ์ในชุมชนร่วมกับ อสม.", "visit5": "ติดตามนัด ANC ตามช่วงอายุครรภ์",
+            "postnatal": "นัดเยี่ยมหลังคลอดวันที่ 1–7, 8–15, 16–42 ร่วมกับ รพ.สต.",
+            "quality": "ตรวจกิจกรรมที่ขาด (lab / อัลตราซาวด์ / ดาวน์ / เบาหวาน)",
+            "iodine": "จ่ายยาเม็ดเสริมไอโอดีนทุกครั้งที่ฝากครรภ์",
             "dt": "ตรวจการบันทึกวัคซีน dT / ฉีดตามนัด", "dental": "ส่งตรวจฟันในวันฝากครรภ์ครั้งแรก",
             "anemia": "ติดตามยาเสริมธาตุเหล็กและตรวจ Hct ซ้ำ", "lbw": "ทบทวนรายที่คลอดน้ำหนักน้อย"}
 

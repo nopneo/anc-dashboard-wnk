@@ -175,6 +175,56 @@ def completeness(pregs, infants, d1, d2, pcu_map, cfg):
     return out
 
 
+def _iodine(d1, d2, cfg):
+    rows = fetch("""
+select di.did code, di.name name, count(op.icode) n
+  from drugitems di
+  left join opitemrece op on op.icode = di.icode and op.vstdate between %(d1)s and %(d2)s
+ where di.did in %(iod)s
+ group by di.did, di.name""", {"d1": d1, "d2": d2, "iod": tuple(cfg.iodine_didstd)})
+    found = sorted(_found(rows), key=lambda f: -f["n"])
+    used = sum(f["n"] for f in found)
+    return _item("iodine_did", "ยาเม็ดที่มีไอโอดีน (DRUG_OPD.DIDSTD)", f"{len(cfg.iodine_didstd)} รหัสยา 24 หลัก", found,
+                 _status(False, not found or used == 0), "ANC_IODINE_DIDSTD",
+                 "ไม่พบยาตามรหัส 24 หลักใน drugitems.did หรือไม่มีการจ่ายในช่วงนี้ — ตรวจรหัสยาเสริมธาตุเหล็ก+ไอโอดีนของ รพ."
+                 if not found or used == 0 else "พบยาที่มีไอโอดีนและมีการจ่ายในช่วงนี้")
+
+
+def _quality_codes(d1, d2, cfg):
+    cbc, dm = queries.lab_codes(cfg)
+    rows = fetch("""
+select concat('ICD9 ', replace(d.icd9, '.', '')) code, '' name, count(*) n
+  from doctor_operation d join ovst o on o.vn = d.vn
+ where o.vstdate between %(d1)s and %(d2)s and replace(d.icd9, '.', '') in %(us)s group by replace(d.icd9, '.', '')
+union all
+select concat('Dx ', icd10), '', count(*) from ovstdiag
+ where vstdate between %(d1)s and %(d2)s and icd10 in %(dx)s group by icd10""",
+                 {"d1": d1, "d2": d2, "us": tuple(cfg.us_icd9), "dx": tuple(cfg.down_dx) + tuple(cfg.dm_dx)})
+    found = _found(rows)
+    missing = [k for k, codes in (("อัลตราซาวด์", cfg.us_icd9), ("คัดกรองดาวน์", cfg.down_dx))
+               if not any(f["code"].split(" ", 1)[1] in codes for f in found)]
+    return _item("quality_codes", "ฝากครรภ์คุณภาพ: lab / หัตถการ / Dx",
+                 f"CBC {', '.join(cbc) or '—'} · เบาหวาน {', '.join(dm) or '—'}", found,
+                 _status(not cbc or not dm, bool(missing)), "ANC_CBC_LAB_CODES · ANC_DM_LAB_CODES · ANC_US_ICD9 · ANC_DOWN_DX · ANC_DM_DX",
+                 ("ไม่พบในช่วงนี้: " + ", ".join(missing) + " — ตรวจรหัสที่ รพ. ใช้บันทึก") if missing
+                 else "รหัส lab เลือกจากชื่อรายการเมื่อไม่ได้ตั้ง env — ตรวจว่าตรงกับรายการที่ใช้จริง")
+
+
+def _thal(d1, d2, cfg):
+    rows = fetch("""
+select tr.thalassaemia_result_export code, tr.thalassaemia_result_name name, count(a.person_anc_id) n
+  from thalassaemia_result tr
+  left join person_anc a on a.thalassaemia_result_id = tr.thalassaemia_result_id
+        and a.labor_date between %(d1)s and %(d2)s
+ group by tr.thalassaemia_result_export, tr.thalassaemia_result_name""", {"d1": d1, "d2": d2})
+    found = _found(rows)
+    hit = any(f["code"] in cfg.thal_export_codes for f in found)
+    return _item("thal_codes", "คัดกรองธาลัสซีเมีย (PRENATAL.THALASSEMIA)", ", ".join(cfg.thal_export_codes), found,
+                 _status(False, not hit), "ANC_THAL_EXPORT_CODES",
+                 "นับครรภ์ที่ thalassaemia_result_export อยู่ในรหัสที่ตั้ง" if hit
+                 else "ไม่พบรหัสผลคัดกรองที่ตรงกับค่าที่ตั้ง")
+
+
 def _dchstts(d1, d2, cfg):
     rows = fetch("""
 select infant_dchstts code, count(*) n from ipt_labour_infant
@@ -203,6 +253,10 @@ def audit(d1, d2, cfg, pcu_map):
                lambda: _refer_dx(d1, d2, cfg, pregs)),
         _guard("wait_cols", "เวลารอคอย", "ANC_WAIT_FROM_COL · ANC_WAIT_TO_COL", lambda: _wait_cols(d1, d2, cfg)),
         _guard("dead_dchstts", "สถานะจำหน่ายทารก", "ANC_DEAD_DCHSTTS", lambda: _dchstts(d1, d2, cfg)),
+        _guard("iodine_did", "ยาเม็ดที่มีไอโอดีน", "ANC_IODINE_DIDSTD", lambda: _iodine(d1, d2, cfg)),
+        _guard("quality_codes", "ฝากครรภ์คุณภาพ: lab / หัตถการ / Dx", "ANC_CBC_LAB_CODES · ANC_DM_LAB_CODES",
+               lambda: _quality_codes(d1, d2, cfg)),
+        _guard("thal_codes", "คัดกรองธาลัสซีเมีย", "ANC_THAL_EXPORT_CODES", lambda: _thal(d1, d2, cfg)),
         _pcu_item(new, pcu_map, cfg),
     ]
     return {"items": items, "completeness": completeness(pregs, infants, d1, d2, pcu_map, cfg),

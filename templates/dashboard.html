@@ -197,13 +197,14 @@
     </section>
 
     <section class="panel">
-      <div class="ph"><span class="ic">🎯</span><h3>ผลตามเป้า</h3><small>ตัวชี้วัดที่มีเป้า 6 ตัว</small></div>
+      {% set tk = ['early12', 'visit5', 'postnatal', 'quality', 'iodine', 'dt', 'dental', 'anemia', 'lbw'] | select('in', k | list) | list %}
+      {% set tk = tk | reject('equalto', 'iodine') | list if k.iodine.target is none else tk %}
+      <div class="ph"><span class="ic">🎯</span><h3>ผลตามเป้า</h3><small>ตัวชี้วัดที่มีเป้า {{ tk | length }} ตัว</small></div>
       <div class="pb">
-      {% set tk = ['early12', 'visit5', 'dt', 'dental', 'anemia', 'lbw'] %}
       {% set ns3 = namespace(ok=0, no=0, na=0) %}
       {% for key in tk %}{% if k[key].ok is sameas true %}{% set ns3.ok = ns3.ok + 1 %}{% elif k[key].ok is sameas false %}{% set ns3.no = ns3.no + 1 %}{% else %}{% set ns3.na = ns3.na + 1 %}{% endif %}{% endfor %}
       <div class="donut">
-        {{ donut([(ns3.ok, '#22c55e'), (ns3.no, '#ef4444'), (ns3.na, '#94a3b8')], ns3.ok ~ '/6', 'ผ่านเป้า') }}
+        {{ donut([(ns3.ok, '#22c55e'), (ns3.no, '#ef4444'), (ns3.na, '#94a3b8')], ns3.ok ~ '/' ~ (tk | length), 'ผ่านเป้า') }}
         <ul class="legend">
           <li><span class="dot" style="background:#22c55e"></span><span class="nm">ผ่านเป้า</span><span class="vl">{{ ns3.ok }}</span></li>
           <li><span class="dot" style="background:#ef4444"></span><span class="nm">ไม่ผ่าน</span><span class="vl">{{ ns3.no }}</span></li>
@@ -224,12 +225,13 @@
     <section class="panel">
       <div class="ph"><span class="ic">🏆</span><h3>ตัวชี้วัดคุณภาพ</h3><small>ANC 10 ตัว</small></div>
       <div class="pb">
+      {#- ฝากครรภ์รายใหม่ / ครั้งบริการ / เฉลี่ยต่อเดือน เป็นข้อมูลบริการ (การ์ดด้านบน) ไม่ใช่ตัวชี้วัด -#}
       {% set rows = [
-        ('new', 'ฝากครรภ์รายใหม่รวม', 'ราย', 'person_anc'),
-        ('visits', 'ครั้งบริการ ANC รวม', 'ครั้ง', 'person_anc_service'),
-        ('per_month', 'เฉลี่ยครั้ง/เดือน', 'ครั้ง', 'person_anc_service'),
-        ('early12', 'ฝากครรภ์ก่อน 12 wk', '%', 'person_anc_service.pa_week · person_anc_other_precare'),
-        ('visit5', 'ANC ครบ 5 ครั้ง', '%', 'person_anc_service.pa_week · person_anc.labor_date'),
+        ('early12', 'ฝากครรภ์ครั้งแรก ≤ 12 wk', '%', 'person_anc_service.pa_week · person_anc_other_precare'),
+        ('visit5', 'ANC ครบ 5 ครั้งตามเกณฑ์ (≤12 · 13–<20 · 20–<26 · 26–<32 · 32–40 wk)', '%', 'person_anc_service.pa_week · person_anc.labor_date'),
+        ('postnatal', 'ดูแลหลังคลอดครบ 3 ครั้ง (วันที่ 1–7 · 8–15 · 16–42)', '%', 'person_anc_preg_care · person_anc.post_labor_service'),
+        ('quality', 'ฝากครรภ์คุณภาพ (HDC) — ครบ 5 กิจกรรม', '%', 'lab_order · thalassaemia_result · doctor_operation · ovstdiag'),
+        ('iodine', 'ยาเม็ดไอโอดีน (Workload) — ในหญิงที่มาฝากครรภ์', '%', 'opitemrece · drugitems.did'),
         ('dt', 'วัคซีน dT', '%', 'ovst_vaccine · person_anc'),
         ('dental', 'ตรวจช่องปาก', '%', 'dtmain · person_anc'),
         ('anemia', 'โลหิตจางใกล้คลอด (Hct < ' ~ d.hct_cutoff ~ '% · GA ≥ ' ~ d.hct_late_ga ~ ')', '%', 'person_anc_lab · person_anc'),
@@ -248,11 +250,16 @@
           <td>{% if r.ok is sameas true %}<span class="st ok">ผ่าน</span>{% elif r.ok is sameas false %}<span class="st no">ไม่ผ่าน</span>
               {% elif r.target is not none %}<span class="st na">ไม่มีข้อมูล</span>{% endif %}</td>
         </tr>
+        {% if key == 'quality' %}{% for p in k.quality_parts %}
+        <tr class="sub"><td>↳ {{ p.label }}</td><td class="n">{{ rate(p.rate) }}</td>
+          <td class="n">{{ p.rate.num }}/{{ p.rate.den }}</td><td></td><td></td></tr>
+        {% endfor %}{% endif %}
         {% endfor %}
       </table>
       </div>
-      <p class="hint">ตัวหาร ก่อน 12 wk / ครบ 5 ครั้ง / dT / ช่องปาก = ครรภ์ที่คลอดในช่วง · โลหิตจาง = ครรภ์ที่คลอดและมีผล Hct ·
-        LBW = ทารกเกิดมีชีพ · ฝากครรภ์ที่หน่วยบริการอื่นนับรวม · ค่าจาง = ตัวหารน้อยกว่า 5</p>
+      <p class="hint">ตัวหาร ≤12 wk / ครบ 5 ครั้ง / คุณภาพ / dT / ช่องปาก = ครรภ์ที่คลอดในช่วง · หลังคลอด = คลอดในช่วงและพ้น 42 วัน ·
+        ไอโอดีน = ครรภ์ที่มาฝากครรภ์ที่ รพ. ในช่วง · โลหิตจาง = คลอดและมีผล Hct · LBW = ทารกเกิดมีชีพ ·
+        นิยามตามเอกสาร KPI กรมอนามัย / HDC · ค่าจาง = ตัวหารน้อยกว่า 5</p>
       </div>
     </section>
 

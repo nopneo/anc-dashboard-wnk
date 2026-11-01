@@ -201,10 +201,11 @@ def build_context(d1, d2):
         visits = queries.visits([p["anc_id"] for p in pregs])
         infants = queries.infants(d1, d2, cfg.dead_dchstts)
         waits = queries.waits(d1, d2, cfg)
-        return pregs, visits, infants, waits
+        pnc = queries.postnatal([p["anc_id"] for p in pregs if p.get("labor_date")])
+        return pregs, visits, infants, waits, pnc
 
-    pregs, visits, infants, waits = _safe(errors, "main", main, ([], [], [], []))
-    ind = metrics.indicators(pregs, visits, infants, waits, d1, d2, cfg)
+    pregs, visits, infants, waits, pnc = _safe(errors, "main", main, ([], [], [], [], []))
+    ind = metrics.indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=pnc)
     age = metrics.by_age(pregs, visits, d1, d2, cfg)
 
     refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(queries.refers(d1, d2), pregs, cfg), [])

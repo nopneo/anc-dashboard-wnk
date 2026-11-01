@@ -32,6 +32,7 @@ def _patch(monkeypatch, pregs=(), visits=(), infants=(), waits=(), refers=()):
     monkeypatch.setattr(queries, "infants", lambda d1, d2, *a: list(infants))
     monkeypatch.setattr(queries, "waits", lambda d1, d2, cfg: list(waits))
     monkeypatch.setattr(queries, "refers", lambda d1, d2: list(refers))
+    monkeypatch.setattr(queries, "postnatal", lambda ids: [])
 
 
 @pytest.fixture
@@ -202,3 +203,26 @@ def test_active_preset_pill(client, fake_data):
 def test_quick_menu_hidden_in_print(client, fake_data):
     assert "เมนูด่วน" in _html(client)
     assert "เมนูด่วน" not in _html(client, "/?d1=2026-01-01&d2=2026-06-30&print=1")
+
+
+# ---------- KPI จากโฟลเดอร์ kpi ----------
+
+def test_indicator_table_has_kpis_not_service_counts(client, fake_data):
+    html = _html(client)
+    table = html[html.index("ตัวชี้วัดคุณภาพ"):html.index("Refer Destinations")]
+    for label in ("ดูแลหลังคลอดครบ 3 ครั้ง", "ฝากครรภ์คุณภาพ", "ยาเม็ดไอโอดีน", "คัดกรองดาวน์", "อัลตราซาวด์"):
+        assert label in table, label
+    for label in ("ฝากครรภ์รายใหม่รวม", "ครั้งบริการ ANC รวม", "เฉลี่ยครั้ง/เดือน"):
+        assert label not in table, label            # ย้ายไปเป็นข้อมูลบริการ (การ์ดด้านบน)
+    assert "ครั้งบริการ ANC" in html               # ยังอยู่บนการ์ด
+
+
+def test_postnatal_rows_reach_metrics(client, fake_data, monkeypatch):
+    seen = {}
+
+    def pnc(ids):
+        seen["ids"] = sorted(ids)
+        return []
+    monkeypatch.setattr(queries, "postnatal", pnc)
+    _html(client)
+    assert seen["ids"] == [1, 2, 3, 4, 5, 6]

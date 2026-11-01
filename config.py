@@ -22,7 +22,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _TIME_COL = re.compile(r"vsttime|service([1-9]|1[0-9]|20)")
 
 #: เป้าหมายตัวชี้วัด (%) · anemia และ lbw ยิ่งต่ำยิ่งดี
-TARGET_DEFAULTS = {"early12": 75, "visit5": 75, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7}
+TARGET_DEFAULTS = {"early12": 75, "visit5": 75, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7,
+                   # เอกสาร KPI: หลังคลอด 3 ครั้ง ≥75 · ฝากครรภ์คุณภาพ (HDC) ปีงบ 2570 ≥70 · ไอโอดีนไม่กำหนดเป้า
+                   "postnatal": 75, "quality": 70, "iodine": None}
+
+#: ยาเม็ดที่มีไอโอดีน (รหัสยา 24 หลัก DIDSTD ตามเอกสาร KPI: Triferdine 150, Obimin-az, Iodine GPO,
+#: Nataral, Nataral EF, Prenamed, Iolic)
+IODINE_DIDSTD = ("201120320037726221781506", "201110100019999920381199", "101110000003082121781506",
+                 "201110100019999920381341", "201110100019999921881341", "202030120019999920381252",
+                 "202030220017745221781506")
 
 #: คอลัมน์ที่ต้องมีใน village_pcu.csv (รูปแบบเดียวกับ mental_health_dashboard)
 PCU_COLUMNS = ("tmbpart", "moo", "hospcode", "pcu")
@@ -40,6 +48,15 @@ class Config:
     hct_late_ga: int = 28
     lbw_grams: int = 2500
     dead_dchstts: tuple = ("08", "09")
+    iodine_didstd: tuple = IODINE_DIDSTD
+    #: ฝากครรภ์คุณภาพ: lab CBC/Hct/Hb และ lab คัดกรองเบาหวาน (lab_items_code · ว่าง = เลือกจากชื่อรายการ)
+    cbc_lab_codes: tuple = ()
+    dm_lab_codes: tuple = ()
+    us_icd9: tuple = ("8878", "5260700", "5260701")
+    down_dx: tuple = ("Z360", "Z362")
+    dm_dx: tuple = ("Z131",)
+    #: thalassaemia_result.thalassaemia_result_export ที่นับว่าคัดกรองแล้ว (PRENATAL.THALASSEMIA 1, 2, 4)
+    thal_export_codes: tuple = ("1", "2", "4")
     postpartum_days: int = 42
     refer_dx_prefixes: tuple = ("O", "Z32", "Z33", "Z34", "Z35", "Z36")
     wait_from_col: str = "vsttime"
@@ -82,6 +99,13 @@ def load_config(env=os.environ):
         hct_late_ga=int(_num(g("ANC_HCT_LATE_GA"), d.hct_late_ga)),
         lbw_grams=int(_num(g("ANC_LBW_GRAMS"), d.lbw_grams)),
         dead_dchstts=_list(g("ANC_DEAD_DCHSTTS")) or d.dead_dchstts,
+        iodine_didstd=_list(g("ANC_IODINE_DIDSTD")) or d.iodine_didstd,
+        cbc_lab_codes=_list(g("ANC_CBC_LAB_CODES")),
+        dm_lab_codes=_list(g("ANC_DM_LAB_CODES")),
+        us_icd9=tuple(x.replace(".", "") for x in _list(g("ANC_US_ICD9"))) or d.us_icd9,
+        down_dx=tuple(x.replace(".", "").upper() for x in _list(g("ANC_DOWN_DX"))) or d.down_dx,
+        dm_dx=tuple(x.replace(".", "").upper() for x in _list(g("ANC_DM_DX"))) or d.dm_dx,
+        thal_export_codes=_list(g("ANC_THAL_EXPORT_CODES")) or d.thal_export_codes,
         postpartum_days=int(_num(g("ANC_POSTPARTUM_DAYS"), d.postpartum_days)),
         refer_dx_prefixes=tuple(x.upper() for x in _list(g("ANC_REFER_DX_PREFIXES"))) or d.refer_dx_prefixes,
         wait_from_col=_col(g("ANC_WAIT_FROM_COL"), d.wait_from_col),

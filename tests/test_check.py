@@ -42,6 +42,7 @@ def data(monkeypatch):
                                                              "village": None}])
     monkeypatch.setattr(queries, "refers", lambda d1, d2: [])
     monkeypatch.setattr(queries, "hct_lab_ids", lambda cfg: (6, 7))
+    monkeypatch.setattr(queries, "lab_codes", lambda cfg: (("38",), ("2016",)))
 
 
 def _item(a, key):
@@ -167,3 +168,20 @@ def test_audit_reports_main_query_failure(monkeypatch, data):
     monkeypatch.setattr(check, "fetch", Router({}))
     it = _item(check.audit(D1, D2, CFG, None), "main_query")
     assert it["status"] == "bad" and "RuntimeError" in it["hint"]
+
+
+def test_audit_kpi_code_items(monkeypatch, data):
+    monkeypatch.setattr(check, "fetch", Router({
+        "from drugitems": [{"code": "201120320037726221781506", "name": "TRIFERDINE", "n": "40"}],
+        "from thalassaemia_result": [{"code": "1", "name": "ปกติ", "n": "24"}],
+    }))
+    a = check.audit(D1, D2, CFG, None)
+    io = _item(a, "iodine_did")
+    assert io["status"] == "ok" and io["found"][0]["name"] == "TRIFERDINE" and io["env"] == "ANC_IODINE_DIDSTD"
+    assert _item(a, "quality_codes")["app_uses"].startswith("CBC 38")
+    assert _item(a, "thal_codes")["status"] == "ok"
+
+
+def test_audit_iodine_none_found_warns(monkeypatch, data):
+    monkeypatch.setattr(check, "fetch", Router({}))
+    assert _item(check.audit(D1, D2, CFG, None), "iodine_did")["status"] == "warn"

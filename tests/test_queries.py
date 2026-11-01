@@ -131,3 +131,40 @@ def test_infants_dead_by_discharge_status(fake_fetch):
     assert queries.infants(D1, D2)[0]["alive"] is False
     sql, args = fake_fetch.calls[-1]
     assert "infant_dchstts" in sql and args["dead"] == ("08", "09")
+
+
+# ---------- KPI จากโฟลเดอร์ kpi ----------
+
+def test_lab_codes_by_name_when_not_set(fake_fetch):
+    fake_fetch.rows = [{"code": c, "name": n} for c, n in [
+        ("37", "Hemoglobin (HGB)"), ("38", "Hct (CBC)"), ("121", "Hemoglobin Typing"), ("2026", "Hemoglobin cast"),
+        ("9", "CBC"), ("240", "OGTT 50 G"), ("287", "DTX"), ("297", "Fluid Glucose"), ("2016", "FBS"),
+        ("2195", "Urine Glucose"), ("2032", "Glucose"), ("2258", "FBS(DTX)"), ("5", "GCT 50 g")]]
+    cbc, dm = queries.lab_codes(CFG)
+    assert cbc == ("37", "38", "9")
+    assert dm == ("240", "287", "2016", "2032", "2258", "5")
+    assert queries.lab_codes(load_config({"ANC_CBC_LAB_CODES": "1", "ANC_DM_LAB_CODES": "2"})) == (("1",), ("2",))
+
+
+def test_pregnancy_kpi_flags(fake_fetch):
+    base = {"anc_id": "1", "hn": "1", "age": "25", "chwpart": None, "amppart": None, "tmbpart": None, "moopart": None,
+            "register_date": "2026-01-05", "lmp": "2025-11-01", "labor_date": None, "hct_lab": None, "hct_anc": None,
+            "has_dt": "0", "has_dental": "0", "has_iodine": "1", "q_cbc": "1", "q_thal": "0", "q_us": "1",
+            "q_down": "1", "q_dm": "0"}
+    fake_fetch.rows = [base]
+    r = queries.pregnancies(D1, D2, load_config({"ANC_HCT_LAB_IDS": "6", "ANC_CBC_LAB_CODES": "38",
+                                                 "ANC_DM_LAB_CODES": "2016"}))[-1]
+    assert (r["has_iodine"], r["q_cbc"], r["q_thal"], r["q_us"], r["q_down"], r["q_dm"]) == \
+        (True, True, False, True, True, False)
+    sql, args = fake_fetch.calls[-1]
+    assert args["iod"] == CFG.iodine_didstd and args["us"] == CFG.us_icd9 and args["thal"] == ("1", "2", "4")
+    assert args["cbc"] == ("38",) and args["dm"] == ("2016",) and args["down"] == ("Z360", "Z362")
+    assert "8878" not in sql and "Z360" not in sql                  # รหัสเป็นพารามิเตอร์
+
+
+def test_postnatal_dates(fake_fetch):
+    fake_fetch.rows = [{"anc_id": "3", "date": "2026-03-05"}, {"anc_id": "3", "date": None}]
+    assert queries.postnatal([3]) == [{"anc_id": 3, "date": date(2026, 3, 5)}]
+    sql, _ = fake_fetch.calls[-1]
+    assert "person_anc_preg_care" in sql and "post_labor_service1_date" in sql
+    assert queries.postnatal([]) == []

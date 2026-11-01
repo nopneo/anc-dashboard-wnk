@@ -9,7 +9,8 @@ def test_defaults():
     assert c.hct_cutoff == 33 and c.hct_late_ga == 28 and c.lbw_grams == 2500
     assert c.postpartum_days == 42
     assert c.refer_dx_prefixes == ("O", "Z32", "Z33", "Z34", "Z35", "Z36")
-    assert c.targets == {"early12": 75, "visit5": 75, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7}
+    assert c.targets == {"early12": 75, "visit5": 75, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7,
+                         "postnatal": 75, "quality": 70, "iodine": None}
     assert c.wait_from_col == "vsttime" and c.wait_to_col == "service5"
     assert c.wait_max_min == 240 and c.data_audited is False
 
@@ -71,3 +72,14 @@ def test_district_defaults():
 
 def test_dead_dchstts_default():
     assert load_config({}).dead_dchstts == ("08", "09")
+
+
+def test_kpi_folder_defaults():
+    c = load_config({})
+    assert c.iodine_didstd[0] == "201120320037726221781506" and len(c.iodine_didstd) == 7
+    assert c.us_icd9 == ("8878", "5260700", "5260701")
+    assert c.down_dx == ("Z360", "Z362") and c.dm_dx == ("Z131",)
+    assert c.thal_export_codes == ("1", "2", "4")
+    assert c.cbc_lab_codes == () and c.dm_lab_codes == ()          # ว่าง = เลือกจากชื่อรายการ lab
+    assert c.targets["postnatal"] == 75 and c.targets["quality"] == 70 and c.targets["iodine"] is None
+    assert load_config({"ANC_TARGET_IODINE": "80"}).targets["iodine"] == 80

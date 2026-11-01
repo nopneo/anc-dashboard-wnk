@@ -10,10 +10,16 @@
   ipt_labour(_infant)         ↔ LABOR / NEWBORN.BWEIGHT
   referout                    ↔ REFER_HISTORY
   service_time                — ไม่มีใน 43 แฟ้ม (เวลารอคอย)
+  opitemrece + drugitems.did  ↔ DRUG_OPD.DIDSTD   ยาเม็ดที่มีไอโอดีน
+  lab_head + lab_order        ↔ LABFU            CBC/Hct/Hb · คัดกรองเบาหวาน (ฝากครรภ์คุณภาพ)
+  doctor_operation.icd9       ↔ PROCEDURE_OPD    อัลตราซาวด์ 88.78
+  ovstdiag.icd10              ↔ DIAGNOSIS_OPD    คัดกรองดาวน์ Z36.0/Z36.2 · เบาหวาน Z13.1
+  person_anc_preg_care        ↔ POSTNATAL        ดูแลหลังคลอด
 รหัสทุกตัวมาจาก config.Config ส่งเป็นพารามิเตอร์ · % ตัวอักษรใน SQL ต้องเขียน %%
 ไม่ดึงชื่อ/CID — hn ใช้จับคู่ refer กับทะเบียนครรภ์ภายในโปรเซสเท่านั้น ไม่แสดงผล
 """
 
+import re
 from datetime import date, datetime, timedelta
 
 from config import village_code
@@ -66,6 +72,25 @@ def hct_lab_ids(cfg):
     return ids or (-1,)
 
 
+#: เลือก lab จากชื่อรายการเมื่อไม่ได้ตั้งรหัส (ANC_CBC_LAB_CODES / ANC_DM_LAB_CODES) — ตรวจผลที่หน้า /check
+CBC_NAME = re.compile(r"^(?:(?:cbc|hct|hematocrit|hb)\b|hemoglobin \(hgb\))", re.I)
+DM_NAME = re.compile(r"^(gct|ogtt|fbs|dtx|glucose)\b", re.I)
+
+
+def lab_codes(cfg):
+    """(รหัส lab CBC/Hct/Hb, รหัส lab คัดกรองเบาหวาน) · ไม่ได้ตั้งใน env = เลือกจากชื่อใน lab_items"""
+    if cfg.cbc_lab_codes and cfg.dm_lab_codes:
+        return tuple(cfg.cbc_lab_codes), tuple(cfg.dm_lab_codes)
+    rows = fetch("select lab_items_code code, lab_items_name name from lab_items")
+    pick = lambda rx: tuple(str(r["code"]) for r in rows if rx.search(str(r.get("name") or "").strip()))
+    return tuple(cfg.cbc_lab_codes) or pick(CBC_NAME), tuple(cfg.dm_lab_codes) or pick(DM_NAME)
+
+
+def _nonempty(t):
+    """IN () ใช้ไม่ได้ใน SQL — ไม่มีรหัสเลยใช้ค่าที่ไม่มีวันตรง"""
+    return tuple(t) or ("-",)
+
+
 PREGNANCIES = """
 select a.person_anc_id anc_id, pt.hn,
        timestampdiff(year, coalesce(pt.birthday, pe.birthdate), a.anc_register_date) age,
@@ -87,7 +112,30 @@ select a.person_anc_id anc_id, pt.hn,
        (a.dental_tx_date is not null
         or exists (select 1 from dtmain t where t.hn = pt.hn and t.pregnancy = 'Y'
                       and t.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s))
-       ) has_dental
+       ) has_dental,
+       exists (select 1 from opitemrece op join drugitems di on di.icode = op.icode
+                where op.hn = pt.hn and di.did in %(iod)s
+                  and op.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s)) has_iodine,
+       (exists (select 1 from person_anc_lab l join person_anc_service s on s.person_anc_service_id = l.person_anc_service_id
+                 where s.person_anc_id = a.person_anc_id and l.anc_lab_id in %(hct)s
+                   and l.anc_lab_result is not null and l.anc_lab_result <> '')
+        or exists (select 1 from lab_head lh join lab_order lo on lo.lab_order_number = lh.lab_order_number
+                    where lh.hn = pt.hn and lo.lab_items_code in %(cbc)s
+                      and lh.order_date between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s))
+       ) q_cbc,
+       exists (select 1 from thalassaemia_result tr where tr.thalassaemia_result_id = a.thalassaemia_result_id
+                and tr.thalassaemia_result_export in %(thal)s) q_thal,
+       exists (select 1 from doctor_operation d join ovst o on o.vn = d.vn
+                where o.hn = pt.hn and replace(d.icd9, '.', '') in %(us)s
+                  and o.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s)) q_us,
+       exists (select 1 from ovstdiag x where x.hn = pt.hn and x.icd10 in %(down)s
+                and x.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s)) q_down,
+       (exists (select 1 from lab_head lh join lab_order lo on lo.lab_order_number = lh.lab_order_number
+                 where lh.hn = pt.hn and lo.lab_items_code in %(dm)s
+                   and lh.order_date between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s))
+        or exists (select 1 from ovstdiag x where x.hn = pt.hn and x.icd10 in %(dmdx)s
+                    and x.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s))
+       ) q_dm
   from person_anc a
   join person pe on pe.person_id = a.person_id
   left join patient pt on pt.hn = coalesce(nullif(pe.patient_hn, ''),
@@ -98,15 +146,22 @@ select a.person_anc_id anc_id, pt.hn,
 
 
 def pregnancies(d1, d2, cfg):
-    args = {"hct": hct_lab_ids(cfg), "late": cfg.hct_late_ga, "dt": tuple(cfg.dt_codes), "d2": d2,
-            "rmin": d1 - timedelta(days=REG_LOOKBACK_DAYS)}
+    hct = hct_lab_ids(cfg)
+    cbc, dm = lab_codes(cfg)
+    args = {"hct": hct, "late": cfg.hct_late_ga, "dt": tuple(cfg.dt_codes), "d2": d2,
+            "rmin": d1 - timedelta(days=REG_LOOKBACK_DAYS), "iod": _nonempty(cfg.iodine_didstd),
+            "cbc": _nonempty(cbc), "dm": _nonempty(dm), "thal": _nonempty(cfg.thal_export_codes),
+            "us": _nonempty(cfg.us_icd9), "down": _nonempty(cfg.down_dx), "dmdx": _nonempty(cfg.dm_dx)}
     out = []
     for r in fetch(PREGNANCIES, args):
         out.append({"anc_id": int(num(r["anc_id"])), "hn": r.get("hn"), "age": _int_or_none(r.get("age")),
                     "village": _village(r), "register_date": _date(r.get("register_date")),
                     "lmp": _date(r.get("lmp")), "labor_date": _date(r.get("labor_date")),
                     "hct_late": _float(r.get("hct_lab")) or _float(r.get("hct_anc")),
-                    "has_dt": _flag(r.get("has_dt")), "has_dental": _flag(r.get("has_dental"))})
+                    "has_dt": _flag(r.get("has_dt")), "has_dental": _flag(r.get("has_dental")),
+                    "has_iodine": _flag(r.get("has_iodine")), "q_cbc": _flag(r.get("q_cbc")),
+                    "q_thal": _flag(r.get("q_thal")), "q_us": _flag(r.get("q_us")),
+                    "q_down": _flag(r.get("q_down")), "q_dm": _flag(r.get("q_dm"))})
     return out
 
 
@@ -127,6 +182,26 @@ def visits(anc_ids):
             ga = _int_or_none(r.get("ga"))
             out.append({"anc_id": int(num(r["anc_id"])), "date": _date(r.get("date")),
                         "ga": ga if ga else None, "precare": _flag(r.get("precare"))})
+    return out
+
+
+POSTNATAL = """
+select person_anc_id anc_id, care_date date from person_anc_preg_care where person_anc_id in %(ids)s
+union all select person_anc_id, post_labor_service1_date from person_anc where person_anc_id in %(ids)s
+union all select person_anc_id, post_labor_service2_date from person_anc where person_anc_id in %(ids)s
+union all select person_anc_id, post_labor_service3_date from person_anc where person_anc_id in %(ids)s
+"""
+
+
+def postnatal(anc_ids):
+    """วันที่ได้ดูแลหลังคลอด (person_anc_preg_care + post_labor_service1–3_date) ↔ แฟ้ม POSTNATAL"""
+    out = []
+    ids = list(anc_ids)
+    for i in range(0, len(ids), BATCH):
+        for r in fetch(POSTNATAL, {"ids": tuple(ids[i:i + BATCH])}):
+            d = _date(r.get("date"))
+            if d:
+                out.append({"anc_id": int(num(r["anc_id"])), "date": d})
     return out
 
 
