@@ -146,3 +146,14 @@ def test_tracking_open_pregnancies():
              preg(5, labor=date(2026, 3, 1))]
     visits = [visit(1, 8, lmp=date(2026, 4, 1)), visit(2, 14, lmp=date(2026, 3, 1))]
     assert tracking(pregs, visits, D2) == {"open": 3, "early12_so_far": 1}
+
+
+def test_monthly_trend():
+    from metrics import monthly_trend
+    pregs = [preg(1, reg=date(2026, 1, 5)), preg(2, reg=date(2026, 3, 9)), preg(3, reg=date(2025, 12, 1))]
+    visits = [visit(1, 10, d=date(2026, 1, 5)), visit(1, 14, d=date(2026, 3, 1)),
+              visit(2, 9, precare=True, d=date(2026, 3, 2))]
+    t = monthly_trend(pregs, visits, D1, D2)
+    assert [m["month"] for m in t] == ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"]
+    assert (t[0]["new"], t[0]["visits"], t[2]["new"], t[2]["visits"], t[1]["visits"]) == (1, 1, 1, 1, 0)
+    assert t[0]["label"] == "ม.ค."

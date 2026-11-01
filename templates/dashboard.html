@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ANC Dashboard — {{ hospital }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ css_v }}">
+<meta name="theme-color" content="#C2185B">
+</head>
+
+{#- ตัวเลข: None → "—" · int ใส่คอมมา -#}
+{% macro fmt(v) %}{% if v is none %}—{% elif v is integer %}{{ '{:,}'.format(v) }}{% else %}{{ v }}{% endif %}{% endmacro %}
+
+{#- ช่องอัตรา: แดงเมื่อไม่ผ่านเป้า · จางเมื่อตัวหาร < 5 -#}
+{% macro rate(r) %}<span class="{{ 'bad' if r.ok is sameas false }} {{ 'low' if r.low_base }}"
+  title="{{ r.num }}/{{ r.den if r.den is not none else '—' }}{{ ' · ฐานน้อย ตีความระวัง' if r.low_base }}">{{ fmt(r.value) }}{{ '%' if r.value is not none }}</span>{% endmacro %}
+
+{% macro sec_error(name) %}{% if d.errors.get(name) %}<div class="err">⚠ {{ d.errors[name] }}</div>{% endif %}{% endmacro %}
+
+<body class="{{ 'print-mode' if print_mode }}">
+
+<form class="toolbar" method="get">
+  <label>ตั้งแต่ <input type="date" name="d1" value="{{ d.d1 }}"></label>
+  <label>ถึง <input type="date" name="d2" value="{{ d.d2 }}"></label>
+  <button type="submit">ดูข้อมูล</button>
+  {% if export_enabled %}
+  {% set q = '?d1=' ~ d.d1 ~ '&d2=' ~ d.d2 %}
+  <a class="dl" href="{{ url_for('export', fmt='jpg') }}{{ q }}">⬇ JPG</a>
+  <a class="dl" href="{{ url_for('export', fmt='pdf') }}{{ q }}">⬇ PDF</a>
+  {% endif %}
+  {% if check_allowed %}<a class="dl nav" href="{{ url_for('check_page') }}">🔎 ตรวจข้อมูล</a>{% endif %}
+  <span class="asof">ข้อมูล ณ {{ d.fetched_at }}</span>
+</form>
+
+{% if not print_mode and not d.audited %}
+{# ซ่อนเมื่อตั้ง ANC_DATA_AUDITED=1 หรือกด "ยืนยันว่าตรวจแล้ว" ที่หน้า /check · ไม่แสดงในโหมดพิมพ์ (?print=1) ที่ใช้ส่งออก #}
+<div class="audit-bar" data-audit-key="anc-audited:{{ hospital }}"><div>
+  ⚠ <b>ตัวเลขยังไม่ได้ตรวจกับข้อมูลของโรงพยาบาลนี้</b> — รหัสใน HOSxP (วัคซีน dT, lab Hct, การจับคู่ รพ.สต. ฯลฯ)
+  ของแต่ละโรงพยาบาลไม่เหมือนกัน
+  {% if check_allowed %}เปิด <a href="{{ url_for('check_page') }}">ตรวจข้อมูลก่อนใช้</a> ก่อนนำตัวเลขไปใช้
+  {% else %}ให้ผู้ดูแลระบบเปิดหน้าตรวจข้อมูลจากเครื่องในโรงพยาบาลก่อนนำตัวเลขไปใช้{% endif %}
+</div></div>
+<script>
+  (function () {
+    var bar = document.currentScript.previousElementSibling;
+    try { if (localStorage.getItem(bar.dataset.auditKey)) bar.remove(); } catch (e) {}
+  })();
+</script>
+{% endif %}
+
+{% set k = d.ind %}
+<div class="sheet">
+
+  <div class="hero">
+    {% if hero_url %}<div class="bg"><img src="{{ hero_url }}" alt=""></div>{% endif %}
+    <div class="logo"><img src="{{ logo_url }}" alt="ตรา{{ hospital }}"></div>
+    <div>
+      <div class="name">{{ hospital }}</div>
+      {% if hospital_en %}<div class="name-en">{{ hospital_en }}</div>{% endif %}
+      <div class="ttl">ANC Dashboard <span>· แดชบอร์ดงานฝากครรภ์</span></div>
+      <div class="quote">“ฝากครรภ์เร็ว ครบคุณภาพ แม่ปลอดภัย ลูกแข็งแรง”</div>
+    </div>
+    <div class="meta">
+      <span class="a">{{ d.period_label }}</span>
+      <div class="b">ข้อมูลจาก HOSxP · นิยามตาม 43 แฟ้ม<br>ณ {{ d.fetched_at }}</div>
+    </div>
+  </div>
+
+  <!-- ====================================================== 1. KPI -->
+  <section class="block">
+    <header><span class="no">1</span>
+      <span><span class="t">ANC KPI Summary</span> <span class="st">ภาพรวมงานฝากครรภ์</span></span></header>
+    {{ sec_error('main') }}
+    <div class="kpis">
+      <div class="kpi g1"><div class="l">ฝากครรภ์รายใหม่<small>New ANC</small></div>
+        <div class="v">{{ fmt(k.new.value) }}</div><div class="u">ราย · กำลังติดตาม {{ d.tracking.open }} ราย</div></div>
+      <div class="kpi g2"><div class="l">ครั้งบริการ ANC<small>ANC Visits</small></div>
+        <div class="v">{{ fmt(k.visits.value) }}</div><div class="u">ครั้ง</div></div>
+      <div class="kpi g3"><div class="l">เฉลี่ยครั้ง/เดือน<small>Visits per Month</small></div>
+        <div class="v">{{ fmt(k.per_month.value) }}</div><div class="u">ครั้ง/เดือน</div></div>
+      <div class="kpi g4"><div class="l">ฝากครรภ์ก่อน 12 wk<small>Early ANC</small></div>
+        <div class="v">{{ fmt(k.early12.value) }}{{ '%' if k.early12.value is not none }}</div>
+        <div class="u">{{ k.early12.num }}/{{ k.early12.den }} ราย ที่คลอด</div><span class="tg">เป้า ≥ {{ k.early12.target }}%</span></div>
+      <div class="kpi g5"><div class="l">ANC ครบ 5 ครั้ง<small>5 visits by GA</small></div>
+        <div class="v">{{ fmt(k.visit5.value) }}{{ '%' if k.visit5.value is not none }}</div>
+        <div class="u">{{ k.visit5.num }}/{{ k.visit5.den }} ราย ที่คลอด</div><span class="tg">เป้า ≥ {{ k.visit5.target }}%</span></div>
+      <div class="kpi g6"><div class="l">ส่งต่อ (Refer)<small>แม่และเด็ก</small></div>
+        <div class="v">{{ fmt(d.refer.total) }}</div><div class="u">ครั้ง</div></div>
+      <div class="kpi g7"><div class="l">เวลารอคอยเฉลี่ย<small>นอก 43 แฟ้ม</small></div>
+        <div class="v">{{ fmt(k.wait.value) }}</div><div class="u">นาที · {{ fmt(k.wait.den) }} visit</div></div>
+    </div>
+  </section>
+
+  <div class="row c2">
+  <!-- ====================================================== 2. trend -->
+  <section class="block">
+    <header><span class="no">2</span>
+      <span><span class="t">ANC Trend</span> <span class="st">รายเดือน</span></span></header>
+    {% set tr = d.trend %}
+    {% if tr %}
+    {% set top = ([1] + tr | map(attribute='visits') | list + tr | map(attribute='new') | list) | max %}
+    {% set rtop = ([1] + d.refer.monthly | map(attribute='teen') | list) | max %}
+    {% set n = tr | length %}
+    {% set w = 640 / n %}
+    <div class="key"><span><i style="background:#F06292"></i>ครั้งบริการ ANC</span>
+      <span><i style="background:#880E4F"></i>ฝากครรภ์รายใหม่</span>
+      <span><i style="background:#F57C00;height:3px"></i>Refer</span></div>
+    <svg viewBox="0 0 680 230" width="100%" height="240" role="img" aria-label="แนวโน้มรายเดือน">
+      {% for g in range(5) %}{% set y = 20 + g * 40 %}
+        <line x1="30" y1="{{ y }}" x2="676" y2="{{ y }}" stroke="#f7dde7"></line>
+        <text x="26" y="{{ y + 4 }}" font-size="10" text-anchor="end" fill="#9a7484">{{ (top * (4 - g) / 4) | round | int }}</text>
+      {% endfor %}
+      {% set ns = namespace(pts=[]) %}
+      {% for m in tr %}
+        {% set x = 36 + loop.index0 * w %}
+        {% set bw = [w * 0.34, 26] | min %}
+        {% set hv = 160 * m.visits / top %}{% set hn = 160 * m.new / top %}
+        <rect x="{{ x + w/2 - bw - 1 }}" y="{{ 180 - hv }}" width="{{ bw }}" height="{{ hv }}" rx="3" fill="#F06292"><title>{{ m.label }} · {{ m.visits }} ครั้ง</title></rect>
+        <rect x="{{ x + w/2 + 1 }}" y="{{ 180 - hn }}" width="{{ bw }}" height="{{ hn }}" rx="3" fill="#880E4F"><title>{{ m.label }} · รายใหม่ {{ m.new }}</title></rect>
+        {% if m.visits %}<text x="{{ x + w/2 - bw/2 - 1 }}" y="{{ 176 - hv }}" font-size="10" text-anchor="middle" fill="#C2185B">{{ m.visits }}</text>{% endif %}
+        <text x="{{ x + w/2 }}" y="196" font-size="11" text-anchor="middle" fill="#9a7484">{{ m.label }}</text>
+        {% set rm = d.refer.monthly[loop.index0] %}
+        {% set rt = rm.teen + rm.repro + rm.elder + rm.unknown %}
+        {% set ns.pts = ns.pts + [(x + w/2) | round(1) ~ ',' ~ (180 - 160 * rt / ([1, top] | max)) | round(1)] %}
+        <text x="{{ x + w/2 }}" y="214" font-size="10" text-anchor="middle" fill="#F57C00">{{ rt }}</text>
+      {% endfor %}
+      <polyline points="{{ ns.pts | join(' ') }}" fill="none" stroke="#F57C00" stroke-width="2.5"></polyline>
+      <text x="676" y="214" font-size="10" text-anchor="end" fill="#F57C00">← refer/เดือน</text>
+    </svg>
+    {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
+  </section>
+
+  <!-- ====================================================== 3. indicators -->
+  <section class="block">
+    <header><span class="no">3</span>
+      <span><span class="t">ตัวชี้วัดคุณภาพ</span> <span class="st">ANC 10 ตัว · ตัวหาร = ครรภ์ที่คลอดในช่วง</span></span></header>
+    {% set rows = [
+      ('new', 'ฝากครรภ์รายใหม่รวม', 'ราย', 'ANC'),
+      ('visits', 'ครั้งบริการ ANC รวม', 'ครั้ง', 'ANC'),
+      ('per_month', 'เฉลี่ยครั้ง/เดือน', 'ครั้ง', 'ANC'),
+      ('early12', 'ฝากครรภ์ก่อน 12 wk', '%', 'ANC.GA'),
+      ('visit5', 'ANC ครบ 5 ครั้ง', '%', 'ANC.GA · LABOR'),
+      ('dt', 'วัคซีน dT', '%', 'EPI'),
+      ('dental', 'ตรวจช่องปาก', '%', 'DENTAL'),
+      ('anemia', 'โลหิตจางใกล้คลอด (Hct < ' ~ d.hct_cutoff ~ '% · GA ≥ ' ~ d.hct_late_ga ~ ')', '%', 'PRENATAL'),
+      ('lbw', 'ทารก LBW (< ' ~ d.lbw_grams ~ ' g)', '%', 'NEWBORN'),
+      ('wait', 'เวลารอคอยเฉลี่ย', 'นาที', None),
+    ] %}
+    <div class="scroll">
+    <table class="t">
+      <tr><th>ตัวชี้วัด</th><th class="n">ผลงาน</th><th class="n">ตัวตั้ง/ตัวหาร</th><th class="n">เป้า</th><th>สถานะ</th></tr>
+      {% for key, label, unit, src in rows %}{% set r = k[key] %}
+      <tr>
+        <td>{{ label }} <span class="src">({{ unit }})</span><br>
+          {% if src %}<span class="src">43 แฟ้ม: {{ src }}</span>{% else %}<span class="pill x43">นอก 43 แฟ้ม</span>{% endif %}</td>
+        <td class="n">{% if unit == '%' %}{{ rate(r) }}{% else %}{{ fmt(r.value) }}{% endif %}</td>
+        <td class="n">{% if r.den is not none and unit == '%' %}{{ r.num }}/{{ r.den }}{% else %}—{% endif %}</td>
+        <td class="n">{% if r.target is not none %}{{ '≤' if key in ('anemia', 'lbw') else '≥' }} {{ r.target }}%{% else %}—{% endif %}</td>
+        <td>{% if r.ok is sameas true %}<span class="pill ok">ผ่าน</span>{% elif r.ok is sameas false %}<span class="pill no">ไม่ผ่าน</span>
+            {% elif r.target is not none %}<span class="pill na">ไม่มีข้อมูล</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+    <p class="hint">ฝากครรภ์ที่หน่วยบริการอื่น (person_anc_other_precare) นับรวมใน "ก่อน 12 wk" และ "ครบ 5 ครั้ง" ·
+      ค่าจางมาก = ตัวหารน้อยกว่า 5 ตีความระวัง</p>
+  </section>
+  </div>
+
+  <!-- ====================================================== 4. age -->
+  <section class="block">
+    <header><span class="no">4</span>
+      <span><span class="t">กลุ่มอายุ</span> <span class="st">อายุแม่ ณ วันลงทะเบียนฝากครรภ์ · จากรายใหม่ {{ fmt(k.new.value) }} ราย</span></span></header>
+    {% set names = {'teen': ('Teenage', '< 20 ปี'), 'repro': ('วัยเจริญพันธุ์', '20–34 ปี'), 'elder': ('Elderly gravida', '≥ 35 ปี')} %}
+    <div class="ages">
+      {% for g in ('teen', 'repro', 'elder') %}{% set a = d.age[g] %}
+      <div class="age {{ g }}">
+        <h4>{{ names[g][0] }} <span class="code">{{ names[g][1] }}</span></h4>
+        <div class="big">{{ a.new }} <small style="font-size:16px">ราย · {{ fmt(a.share) }}{{ '%' if a.share is not none }}</small></div>
+        <ul>
+          {% if g == 'teen' %}<li><span>อายุ &lt; 15 ปี</span><b class="{{ 'bad' if a.lt15 }}">{{ a.lt15 }} ราย</b></li>
+          <li><span>อายุ 15–19 ปี</span><b>{{ a['15_19'] }} ราย</b></li>{% endif %}
+          <li><span>ฝากครรภ์ก่อน 12 wk</span>{{ rate(a.early12) }}</li>
+          <li><span>ANC ครบ 5 ครั้ง</span>{{ rate(a.visit5) }}</li>
+          <li><span>โลหิตจางใกล้คลอด</span>{{ rate(a.anemia) }}</li>
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- ====================================================== 5. PCU -->
+  <section class="block">
+    <header><span class="no">5</span>
+      <span><span class="t">แยกตาม รพ.สต.</span> <span class="st">จัดตามหมู่บ้านที่อยู่ของแม่ (รหัสหมู่บ้าน 8 หลัก)</span></span></header>
+    {{ sec_error('pcu') }}
+    {% if d.pcu_missing %}
+      <div class="empty">ยังไม่ได้ตั้งค่าการจับคู่หมู่บ้าน → รพ.สต. (ไฟล์ <b>pcu_map.csv</b>)
+        {% if check_allowed %}— ดาวน์โหลดแม่แบบได้ที่ <a href="{{ url_for('check_page') }}">หน้าตรวจข้อมูล</a>{% endif %}</div>
+    {% elif d.pcu %}
+    <div class="scroll">
+    <table class="t">
+      <tr><th>รพ.สต.</th><th class="n">รายใหม่</th><th class="n">&lt;20</th><th class="n">20–34</th><th class="n">≥35</th>
+        <th class="n">ก่อน 12 wk</th><th class="n">ครบ 5 ครั้ง</th><th class="n">dT</th><th class="n">โลหิตจาง</th>
+        <th class="n">LBW</th><th class="n">Refer</th></tr>
+      {% for r in d.pcu %}
+      <tr><td>{{ r.name }} {% if r.hospcode %}<span class="code">{{ r.hospcode }}</span>{% endif %}</td>
+        <td class="n">{{ r.new }}</td><td class="n">{{ r.teen }}</td><td class="n">{{ r.repro }}</td><td class="n">{{ r.elder }}</td>
+        <td class="n">{{ rate(r.early12) }}</td><td class="n">{{ rate(r.visit5) }}</td><td class="n">{{ rate(r.dt) }}</td>
+        <td class="n">{{ rate(r.anemia) }}</td><td class="n">{{ rate(r.lbw) }}</td><td class="n">{{ r.refer }}</td></tr>
+      {% endfor %}
+    </table>
+    </div>
+    {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
+  </section>
+
+  <div class="row c2">
+  <!-- ====================================================== 6. refer monthly -->
+  <section class="block">
+    <header><span class="no">6</span>
+      <span><span class="t">Refer รายเดือน</span> <span class="st">แยกกลุ่มอายุ · ทะเบียนฝากครรภ์ถึงหลังคลอด {{ d.postpartum_days }} วัน + Dx O/Z32–Z36</span></span></header>
+    {{ sec_error('refer') }}
+    {% set rm = d.refer.monthly %}
+    {% if d.refer.total %}
+    {% set rtop = ([1] + rm | map(attribute='teen') | list) | max %}
+    {% set ns = namespace(top=1) %}
+    {% for m in rm %}{% set ns.top = [ns.top, m.teen + m.repro + m.elder + m.unknown] | max %}{% endfor %}
+    {% set n = rm | length %}{% set w = 640 / n %}
+    <div class="key"><span><i style="background:var(--teen)"></i>Teenage</span><span><i style="background:var(--repro)"></i>วัยเจริญพันธุ์</span>
+      <span><i style="background:var(--elder)"></i>Elderly</span><span><i style="background:var(--unknown)"></i>ไม่ทราบอายุ</span></div>
+    <svg viewBox="0 0 680 220" width="100%" height="230" role="img" aria-label="refer รายเดือน">
+      {% for m in rm %}
+        {% set x = 36 + loop.index0 * w + w * 0.2 %}{% set bw = w * 0.6 %}
+        {% set ns2 = namespace(y=180) %}
+        {% for g, col in (('teen', '#8E24AA'), ('repro', '#E91E63'), ('elder', '#F57C00'), ('unknown', '#b9a3ad')) %}
+          {% set h = 160 * m[g] / ns.top %}
+          {% if h > 0 %}<rect x="{{ x }}" y="{{ ns2.y - h }}" width="{{ bw }}" height="{{ h }}" fill="{{ col }}"><title>{{ m.month }} · {{ m[g] }}</title></rect>{% endif %}
+          {% set ns2.y = ns2.y - h %}
+        {% endfor %}
+        {% set tot = m.teen + m.repro + m.elder + m.unknown %}
+        {% if tot %}<text x="{{ x + bw/2 }}" y="{{ ns2.y - 4 }}" font-size="11" text-anchor="middle" fill="#880E4F">{{ tot }}</text>{% endif %}
+        <text x="{{ x + bw/2 }}" y="198" font-size="11" text-anchor="middle" fill="#9a7484">{{ d.trend[loop.index0].label if d.trend else m.month }}</text>
+      {% endfor %}
+      <line x1="30" y1="180" x2="676" y2="180" stroke="#f7dde7"></line>
+    </svg>
+    {% else %}<div class="empty">ไม่มี refer ในช่วงนี้</div>{% endif %}
+  </section>
+
+  <!-- ====================================================== 7. top dx -->
+  <section class="block">
+    <header><span class="no">7</span>
+      <span><span class="t">Top 10 Refer Diagnoses</span> <span class="st">Dx หลัก ICD-10 (3 หลัก) · {{ d.refer.total }} ครั้ง</span></span></header>
+    {% if d.refer.top_dx %}
+    {% set mx = d.refer.top_dx[0].n %}
+    <ol class="hbars">
+      {% for x in d.refer.top_dx %}
+      <li><div class="top"><span class="nm">{{ x.name or x.code3 }} <span class="code">[{{ x.code3 }}]</span></span>
+        <span class="vl">{{ x.n }} · {{ x.pct }}%</span></div>
+        <div class="bar"><i style="width:{{ (100 * x.n / mx) | round(1) }}%"></i></div></li>
+      {% endfor %}
+    </ol>
+    {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
+  </section>
+  </div>
+
+  <div class="row c2">
+  <!-- ====================================================== 8. destinations -->
+  <section class="block">
+    <header><span class="no">8</span>
+      <span><span class="t">Refer Destinations</span> <span class="st">โรงพยาบาลปลายทาง</span></span></header>
+    {% if d.refer.dest %}
+    {% set mx = d.refer.dest[0].n %}
+    <ol class="hbars">
+      {% for x in d.refer.dest[:10] %}
+      <li><div class="top"><span class="nm">{{ x.name }} {% if x.code and x.code != x.name %}<span class="code">[{{ x.code }}]</span>{% endif %}</span>
+        <span class="vl">{{ x.n }} ครั้ง</span></div>
+        <div class="bar"><i style="width:{{ (100 * x.n / mx) | round(1) }}%"></i></div></li>
+      {% endfor %}
+    </ol>
+    {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
+  </section>
+
+  <!-- ====================================================== 9. refer table -->
+  <section class="block">
+    <header><span class="no">9</span>
+      <span><span class="t">สรุป Refer รายเดือน</span> <span class="st">เดือน × กลุ่ม Dx × ปลายทาง · เวลาจากรับบริการถึง refer</span></span></header>
+    {% if d.refer.table %}
+    <div class="scroll" style="max-height:430px;overflow-y:auto">
+    <table class="t">
+      <tr><th>เดือน</th><th>กลุ่ม Dx</th><th>ปลายทาง</th><th class="n">ครั้ง</th><th class="n">เวลาเฉลี่ย (นาที)</th></tr>
+      {% for r in d.refer.table %}
+      <tr><td>{{ r.month | th_month }}</td>
+        <td>{{ {'O': 'O · ภาวะตั้งครรภ์/คลอด', 'Z3x': 'Z32–Z36 · ดูแลครรภ์'}.get(r.chapter, r.chapter) }}</td>
+        <td>{{ r.dest_name }}</td><td class="n">{{ r.n }}</td><td class="n">{{ fmt(r.avg_min) }}</td></tr>
+      {% endfor %}
+    </table>
+    </div>
+    {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
+  </section>
+  </div>
+
+  <!-- ====================================================== 10. alerts -->
+  <section class="block alert-card">
+    <header><span class="no">10</span>
+      <span><span class="t">Alert &amp; Action</span> <span class="st">รายการที่ต้องติดตาม</span></span></header>
+    {% if d.alerts %}
+    <div class="scroll">
+    <table class="t alerts">
+      <tr><th>ระดับ</th><th>ประเด็น</th><th>ผู้รับผิดชอบ</th><th>Action</th></tr>
+      {% for a in d.alerts %}
+      <tr><td class="lv lv-{{ a.level }}">{{ {'red': '● ด่วน', 'amber': '● เฝ้าระวัง', 'info': '● ข้อมูล'}[a.level] }}</td>
+        <td>{{ a.text }}</td><td>{{ a.owner }}</td><td>{{ a.action }}</td></tr>
+      {% endfor %}
+    </table>
+    </div>
+    {% else %}<div class="empty">ไม่มีรายการที่ต้องติดตาม</div>{% endif %}
+  </section>
+
+  <footer class="src">
+    <b>แหล่งข้อมูล</b> — นิยามตามแฟ้ม 43 แฟ้ม ANC · PRENATAL · LABOR · NEWBORN · EPI · DENTAL · REFER_HISTORY
+    คำนวณจาก HOSxP: person_anc · person_anc_service · person_anc_other_precare · person_anc_lab · ovst_vaccine ·
+    dtmain · ipt_labour_infant · referout · service_time (เวลารอคอย นอก 43 แฟ้ม) — แสดงเฉพาะจำนวนนับ ไม่มีข้อมูลรายคน<br>
+    ANC Dashboard เวอร์ชัน {{ version }} · ติดต่อ: {{ contact }} · ผู้พัฒนา: {{ dev_contact }}
+  </footer>
+</div>
+</body>
+</html>

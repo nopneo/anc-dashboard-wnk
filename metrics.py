@@ -350,3 +350,18 @@ def alerts(ind, pcu_rows, age, unmapped):
         out.append({"level": "info", "text": f"ยังไม่ได้จับคู่ รพ.สต. {len(unmapped)} หมู่บ้าน",
                     "owner": "ผู้ดูแลระบบ", "action": "เติมไฟล์ pcu_map.csv จากหน้า /check"})
     return out
+
+
+TH_MONTHS = ("ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.")
+
+
+def monthly_trend(pregs, visits, d1, d2):
+    """รายเดือน: ฝากครรภ์รายใหม่ และครั้งบริการ ANC ที่ รพ. (ไม่นับ precare)"""
+    rows = {m: {"month": m, "label": TH_MONTHS[int(m[5:]) - 1], "new": 0, "visits": 0} for m in _months(d1, d2)}
+    for p in pregs:
+        if _in(p.get("register_date"), d1, d2):
+            rows[p["register_date"].strftime("%Y-%m")]["new"] += 1
+    for v in visits:
+        if not v.get("precare") and _in(v.get("date"), d1, d2):
+            rows[v["date"].strftime("%Y-%m")]["visits"] += 1
+    return list(rows.values())
