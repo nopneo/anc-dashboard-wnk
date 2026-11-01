@@ -11,7 +11,7 @@ def read(p):
 def test_install_has_section_0():
     t = read("INSTALL.md")
     assert "## 0. ก่อนนำไปใช้" in t
-    for s in ("setup_check.py", "ANC_DATA_AUDITED", "1–2 สัปดาห์", "MIT", "pcu_map.csv", "/check", "ไม่มีการรับประกัน"):
+    for s in ("setup_check.py", "ANC_DATA_AUDITED", "1–2 สัปดาห์", "MIT", "village_pcu.csv", "mental_health_dashboard", "/check", "ไม่มีการรับประกัน"):
         assert s in t, s
 
 
@@ -28,7 +28,7 @@ def test_dockerfile_ships_setup_check():
 
 def test_dist_includes_setup_check_and_example_map():
     t = read("build_dist.py")
-    assert '"setup_check.py"' in t and '"pcu_map.example.csv"' in t and '"metrics.py"' in t and '"config.py"' in t
+    assert '"setup_check.py"' in t and '"village_pcu.example.csv"' in t and '"metrics.py"' in t and '"config.py"' in t
 
 
 def test_env_example_lists_all_config_keys():
@@ -43,4 +43,4 @@ def test_env_example_lists_all_config_keys():
 
 def test_no_secrets_committed():
     assert not os.path.exists(os.path.join(ROOT, ".env")) or ".env" in read(".gitignore").split()
-    assert "pcu_map.csv" in read(".gitignore").split()
+    assert "village_pcu.csv" in read(".gitignore").split()

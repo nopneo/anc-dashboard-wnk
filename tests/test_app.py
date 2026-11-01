@@ -16,9 +16,10 @@ def _preg(i, age, village, labor=date(2026, 5, 1)):
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
-    m = tmp_path / "pcu_map.csv"
-    m.write_text("village_code,pcu_hospcode,pcu_name\n30250101,03929,รพ.สต.ทดสอบ\n", encoding="utf-8")
-    monkeypatch.setenv("ANC_PCU_MAP", str(m))
+    m = tmp_path / "village_pcu.csv"
+    m.write_text("tmbpart,tambon,moo,village,hospcode,pcu\n01,วังน้ำเขียว,1,ศาลเจ้าพ่อ,03929,รพ.สต.ทดสอบ\n",
+                 encoding="utf-8")
+    monkeypatch.setenv("ANC_VILLAGE_CSV", str(m))
     monkeypatch.delenv("ANC_DATA_AUDITED", raising=False)
     appmod._cache._data.clear()
     appmod.app.config["TESTING"] = True
@@ -61,7 +62,7 @@ def test_dashboard_renders_sections(client, fake_data):
     for title in ("ANC KPI Summary", "ตัวชี้วัดคุณภาพ", "กลุ่มอายุ", "แยกตาม รพ.สต.", "Refer รายเดือน",
                   "Top 10 Refer Diagnoses", "Refer Destinations", "สรุป Refer รายเดือน", "Alert &amp; Action"):
         assert title in html, title
-    assert "รพ.สต.ทดสอบ" in html and "รพ.มหาราชนครราชสีมา" in html and "O14" in html
+    assert "รพ.สต.ทดสอบ" in html and "นอกเขตอำเภอ" in html and "รพ.มหาราชนครราชสีมา" in html and "O14" in html
     assert "43 แฟ้ม" not in html                     # แหล่งข้อมูลคือ HOSxP — แสดงชื่อตาราง HOSxP
     assert "HOSxP: person_anc_service.pa_week" in html and "HOSxP: ipt_labour_infant" in html
     assert "<td>มี.ค. 69</td>" in html          # เดือนในตาราง refer เป็นภาษาไทย
@@ -118,7 +119,7 @@ def test_healthz_503_when_db_down(client, monkeypatch):
 
 
 def test_pcu_section_shows_setup_hint_without_map(client, fake_data, monkeypatch, tmp_path):
-    monkeypatch.setenv("ANC_PCU_MAP", str(tmp_path / "missing.csv"))
+    monkeypatch.setenv("ANC_VILLAGE_CSV", str(tmp_path / "missing.csv"))
     html = _html(client)
     assert "ยังไม่ได้ตั้งค่าการจับคู่หมู่บ้าน" in html
 
@@ -126,9 +127,9 @@ def test_pcu_section_shows_setup_hint_without_map(client, fake_data, monkeypatch
 def test_bad_pcu_map_is_section_error(client, fake_data, monkeypatch, tmp_path):
     bad = tmp_path / "bad.csv"
     bad.write_text("x,y\n", encoding="utf-8")
-    monkeypatch.setenv("ANC_PCU_MAP", str(bad))
+    monkeypatch.setenv("ANC_VILLAGE_CSV", str(bad))
     html = _html(client)
-    assert "pcu_map.csv" in html and "ANC KPI Summary" in html
+    assert "village_pcu.csv" in html and "ANC KPI Summary" in html
 
 
 def test_export_disabled_returns_404(client, monkeypatch):

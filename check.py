@@ -139,17 +139,18 @@ select count(*) total, {cols}
                  found, _status(bad, total == 0), "ANC_WAIT_FROM_COL · ANC_WAIT_TO_COL", hint)
 
 
-def _pcu_item(pregs, pcu_map):
+def _pcu_item(pregs, pcu_map, cfg):
+    title = "จับคู่หมู่บ้าน → รพ.สต. (village_pcu.csv)"
     if pcu_map is None:
-        return _item("pcu_map", "จับคู่หมู่บ้าน → รพ.สต. (pcu_map.csv)", "ไม่มีไฟล์", [], "bad", "ANC_PCU_MAP",
-                     "ดาวน์โหลดแม่แบบด้านล่าง เติม pcu_hospcode/pcu_name แล้ววางไว้ที่ pcu_map.csv")
-    un = metrics.unmapped_villages(pregs, pcu_map)
+        return _item("pcu_map", title, "ไม่มีไฟล์", [], "bad", "ANC_VILLAGE_CSV",
+                     "ใช้ไฟล์ village_pcu.csv ชุดเดียวกับ mental_health_dashboard ได้เลย หรือดาวน์โหลดแม่แบบด้านล่าง")
+    un = metrics.unmapped_villages(pregs, pcu_map, cfg)
     n_un = sum(n for _, n in un)
     share = metrics.pct(n_un, len(pregs)) or 0.0
-    return _item("pcu_map", "จับคู่หมู่บ้าน → รพ.สต. (pcu_map.csv)", f"{len(pcu_map)} หมู่บ้าน",
+    return _item("pcu_map", title, f"{len(pcu_map)} หมู่ · อำเภอ {cfg.chwpart}{cfg.amppart}",
                  [{"code": v or "(ไม่มีที่อยู่)", "name": "", "n": n} for v, n in un[:15]],
-                 _status(False, share > UNMAPPED_WARN_PCT), "ANC_PCU_MAP",
-                 f"ครรภ์ที่ไม่ได้จับคู่ {n_un} ราย ({share}%) — นับเป็น 'นอกเขต/ไม่ระบุ'")
+                 _status(False, share > UNMAPPED_WARN_PCT), "ANC_VILLAGE_CSV · ANC_CHWPART · ANC_AMPPART",
+                 f"ครรภ์ในอำเภอที่หมู่ไม่อยู่ในไฟล์ {n_un} ราย ({share}%) — นับเป็น 'ในอำเภอ ไม่ทราบหมู่'")
 
 
 def _comp(title, n, den, warn=95.0, bad=80.0):
@@ -158,7 +159,7 @@ def _comp(title, n, den, warn=95.0, bad=80.0):
             "status": "warn" if p is None else _status(p < bad, p < warn)}
 
 
-def completeness(pregs, infants, d1, d2, pcu_map):
+def completeness(pregs, infants, d1, d2, pcu_map, cfg):
     new = [p for p in pregs if p.get("register_date") and d1 <= p["register_date"] <= d2]
     due = [p for p in pregs if p.get("lmp") and (d2 - p["lmp"]).days >= 42 * 7 and p["lmp"] >= d1 - timedelta(days=365)]
     delivered = [p for p in pregs if p.get("labor_date") and d1 <= p["labor_date"] <= d2]
@@ -169,7 +170,8 @@ def completeness(pregs, infants, d1, d2, pcu_map):
            _comp("ครรภ์ที่คลอดแล้วมีผล Hct ใกล้คลอด", sum(1 for p in delivered if p.get("hct_late") is not None),
                  len(delivered), warn=50.0, bad=20.0)]
     if pcu_map is not None:
-        out.append(_comp("ครรภ์ที่จับคู่ รพ.สต. ได้", sum(1 for p in new if p.get("village") in pcu_map), len(new)))
+        out.append(_comp("ครรภ์ที่จัดเข้า รพ.สต. / เขต รพ. / นอกอำเภอ ได้",
+                         sum(1 for p in new if metrics.pcu_of(p.get("village"), pcu_map, cfg) != metrics.UNK), len(new)))
     return out
 
 
@@ -201,31 +203,40 @@ def audit(d1, d2, cfg, pcu_map):
                lambda: _refer_dx(d1, d2, cfg, pregs)),
         _guard("wait_cols", "เวลารอคอย", "ANC_WAIT_FROM_COL · ANC_WAIT_TO_COL", lambda: _wait_cols(d1, d2, cfg)),
         _guard("dead_dchstts", "สถานะจำหน่ายทารก", "ANC_DEAD_DCHSTTS", lambda: _dchstts(d1, d2, cfg)),
-        _pcu_item(new, pcu_map),
+        _pcu_item(new, pcu_map, cfg),
     ]
-    return {"items": items, "completeness": completeness(pregs, infants, d1, d2, pcu_map),
+    return {"items": items, "completeness": completeness(pregs, infants, d1, d2, pcu_map, cfg),
             "n_pregs": len(new)}
 
 
-def pcu_template(pregs, pcu_map):
-    """แถวแม่แบบ pcu_map.csv: รหัสหมู่บ้านที่พบ + ชื่อตำบล + หมู่ + จำนวนครรภ์ · ไม่มีข้อมูลรายคน"""
+def village_template(pregs, pcu_map, cfg):
+    """แถวแม่แบบ village_pcu.csv: หมู่ในอำเภอที่พบในทะเบียนครรภ์ + หมู่ที่จับคู่ไว้แล้ว
+    [tmbpart, tambon, moo, village, hospcode, pcu, pregnancies] · ไม่มีข้อมูลรายคน"""
     pcu_map = pcu_map or {}
+    district = cfg.chwpart + cfg.amppart
     counts = {}
     for p in pregs:
-        if p.get("village"):
-            counts[p["village"]] = counts.get(p["village"], 0) + 1
+        v = p.get("village")
+        if v and v.startswith(district):
+            counts[v] = counts.get(v, 0) + 1
     for v in pcu_map:
         counts.setdefault(v, 0)
-    tambon = {}
-    ids = tuple(sorted({v[:6] for v in counts}))
-    if ids:
+    tambon, vname = {}, {}
+    if counts:
         try:
-            tambon = {str(r["addressid"]): r.get("name") or ""
-                      for r in fetch("select addressid, name from thaiaddress where addressid in %(ids)s", {"ids": ids})}
+            tambon = {str(r["addressid"]): r.get("name") or "" for r in fetch(
+                "select addressid, name from thaiaddress where addressid in %(ids)s",
+                {"ids": tuple(sorted({v[:6] for v in counts}))})}
         except Exception:
             tambon = {}
+        try:
+            vname = {str(r["village_code"]): r.get("village_name") or "" for r in fetch(
+                "select village_code, village_name from village where village_code in %(ids)s",
+                {"ids": tuple(sorted(counts))})}
+        except Exception:
+            vname = {}
     rows = []
     for v in sorted(counts):
         hcode, name = pcu_map.get(v, ("", ""))
-        rows.append([v, hcode, name, tambon.get(v[:6], ""), v[6:], counts[v]])
+        rows.append([v[4:6], tambon.get(v[:6], ""), int(v[6:8]), vname.get(v, ""), hcode, name, counts[v]])
     return rows

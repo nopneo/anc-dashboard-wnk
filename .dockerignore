@@ -11,7 +11,7 @@ dist
 docs
 tests
 .github
-pcu_map.csv
+village_pcu.csv
 *.jpg
 !static/img/*.jpg
 # โลโก้/ภาพพื้นหลังของ รพ.ผู้พัฒนา — image กลางใช้โลโก้กลาง static/img/logo.png

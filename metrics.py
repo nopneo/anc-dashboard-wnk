@@ -270,21 +270,36 @@ def refer_summary(refers, d1, d2):
             "dest": sorted(dest.values(), key=lambda d: (-d["n"], d["code"])), "table": rows, "total": total}
 
 
-# ---------- รพ.สต. ----------
+# ---------- รพ.สต. (แบบเดียวกับ mental_health_dashboard) ----------
 
-UNMAPPED = ("", "นอกเขต/ไม่ระบุ")
+#: หมู่ในอำเภอที่ไม่อยู่ใน village_pcu.csv (รวมครรภ์ที่ไม่มีที่อยู่) · ที่อยู่นอกอำเภอ
+UNK = ("unk", "ในอำเภอ ไม่ทราบหมู่")
+OUT = ("out", "นอกเขตอำเภอ")
 
 
-def pcu_of(village, pcu_map):
-    return pcu_map.get(village, UNMAPPED) if village else UNMAPPED
+def pcu_of(village, pcu_map, cfg):
+    """หมู่บ้าน 8 หลัก → (รหัส, ชื่อ) ของ รพ.สต. · นอกอำเภอ cfg.chwpart/amppart = OUT · หมู่ที่ไม่อยู่ในไฟล์ = UNK"""
+    if not village:
+        return UNK
+    if village[:4] != cfg.chwpart + cfg.amppart:
+        return OUT
+    return pcu_map.get(village, UNK)
+
+
+def _pcu_order(pcu_map, cfg):
+    """ลำดับแถว: รพ.สต. ตามชื่อ → เขต รพ. → ในอำเภอ ไม่ทราบหมู่ → นอกเขตอำเภอ"""
+    names = dict(pcu_map.values())
+    pcus = sorted(((c, n) for c, n in names.items() if c != cfg.hospcode), key=lambda x: x[1])
+    return pcus + [(cfg.hospcode, names.get(cfg.hospcode) or "เขต รพ."), UNK, OUT]
 
 
 def by_pcu(pregs, visits, infants, refers, d1, d2, cfg, pcu_map):
     vmap = _by_anc(visits)
-    groups = {pcu: {"pregs": [], "infants": [], "refer": 0} for pcu in set(pcu_map.values())}
+    order = _pcu_order(pcu_map, cfg)
+    groups = {code: {"pregs": [], "infants": [], "refer": 0} for code, _ in order}
 
     def bucket(village):
-        return groups.setdefault(pcu_of(village, pcu_map), {"pregs": [], "infants": [], "refer": 0})
+        return groups[pcu_of(village, pcu_map, cfg)[0]]
 
     for p in pregs:
         bucket(p.get("village"))["pregs"].append(p)
@@ -294,7 +309,8 @@ def by_pcu(pregs, visits, infants, refers, d1, d2, cfg, pcu_map):
         bucket(r.get("village"))["refer"] += 1
 
     rows = []
-    for (hcode, name), g in groups.items():
+    for hcode, name in order:
+        g = groups[hcode]
         new = [p for p in g["pregs"] if _in(p.get("register_date"), d1, d2)]
         delivered = _delivered(g["pregs"], d1, d2)
         row = {"hospcode": hcode, "name": name, "new": len(new),
@@ -304,16 +320,15 @@ def by_pcu(pregs, visits, infants, refers, d1, d2, cfg, pcu_map):
         for a in AGE_GROUPS:
             row[a] = sum(1 for p in new if age_group(p.get("age")) == a)
         rows.append(row)
-    rows.sort(key=lambda r: (r["name"] == UNMAPPED[1], r["name"]))
     return rows
 
 
-def unmapped_villages(pregs, pcu_map):
+def unmapped_villages(pregs, pcu_map, cfg):
+    """หมู่ในอำเภอที่ยังไม่อยู่ใน village_pcu.csv ('' = ไม่มีที่อยู่) พร้อมจำนวนครรภ์ เรียงมากไปน้อย"""
     n = defaultdict(int)
     for p in pregs:
-        v = p.get("village") or ""
-        if v not in pcu_map:
-            n[v] += 1
+        if pcu_of(p.get("village"), pcu_map, cfg) == UNK:
+            n[p.get("village") or ""] += 1
     return sorted(n.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
@@ -339,7 +354,7 @@ def alerts(ind, pcu_rows, age, unmapped):
         out.append({"level": "red", "text": f"แม่อายุต่ำกว่า 15 ปี {lt15} ราย", "owner": "งานแม่และเด็ก / ทีมสหวิชาชีพ",
                     "action": "ประเมินความปลอดภัยและส่งต่อทีมคุ้มครองเด็ก"})
     for row in pcu_rows:
-        if row["name"] == UNMAPPED[1]:
+        if row["hospcode"] in (UNK[0], OUT[0]):
             continue
         low = [IND_LABELS[k] for k in ("early12", "visit5")
                if row[k].get("ok") is False and (row[k].get("den") or 0) >= LOW_BASE]
@@ -348,7 +363,7 @@ def alerts(ind, pcu_rows, age, unmapped):
                         "owner": row["name"], "action": "ทบทวนรายชื่อร่วมกับ รพ.สต."})
     if unmapped:
         out.append({"level": "info", "text": f"ยังไม่ได้จับคู่ รพ.สต. {len(unmapped)} หมู่บ้าน",
-                    "owner": "ผู้ดูแลระบบ", "action": "เติมไฟล์ pcu_map.csv จากหน้า /check"})
+                    "owner": "ผู้ดูแลระบบ", "action": "เติมหมู่ที่ขาดใน village_pcu.csv (ดูหน้า /check)"})
     return out
 
 

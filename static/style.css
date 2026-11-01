@@ -151,7 +151,7 @@ table.t th {
 table.t td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 table.t td.n, table.t th.n { text-align: right; font-variant-numeric: tabular-nums; }
 table.t .src { color: var(--muted); font-size: 12px; }
-table.t td.id { font-weight: 700; color: var(--navy); }
+table.t td.id { font-weight: 700; color: var(--navy); white-space: nowrap; }
 .bad { color: #dc2626; font-weight: 700; }
 .low { opacity: .5; }
 .code { color: var(--muted); font-size: 12.5px; }

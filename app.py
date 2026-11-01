@@ -30,7 +30,7 @@ import render
 import metrics
 import queries
 from cache import TTLCache
-from config import PcuMapError, load_config, load_pcu_map
+from config import PcuMapError, load_config, load_village_pcu
 
 _PREFIX_RE = re.compile(r"(/[A-Za-z0-9._~-]+)+/?")
 
@@ -181,7 +181,7 @@ def _safe(errors, name, fn, default):
     try:
         return fn()
     except PcuMapError as e:
-        errors[name] = f"ไฟล์ pcu_map.csv ไม่ถูกต้อง: {e}"
+        errors[name] = f"ไฟล์ village_pcu.csv ไม่ถูกต้อง: {e}"
     except Exception:
         app.logger.exception("section %s failed", name)
         errors[name] = "ดึงข้อมูลไม่ได้"
@@ -210,9 +210,9 @@ def build_context(d1, d2):
     refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(queries.refers(d1, d2), pregs, cfg), [])
     refer = metrics.refer_summary(refer_rows, d1, d2)
 
-    pcu_map = _safe(errors, "pcu", lambda: load_pcu_map(cfg.pcu_map_path), None)
-    pcu = metrics.by_pcu(pregs, visits, infants, refer_rows, d1, d2, cfg, pcu_map) if pcu_map else []
-    unmapped = metrics.unmapped_villages(pregs, pcu_map) if pcu_map else []
+    pcu_map = _safe(errors, "pcu", lambda: load_village_pcu(cfg.village_csv, cfg.chwpart, cfg.amppart), None)
+    pcu = metrics.by_pcu(pregs, visits, infants, refer_rows, d1, d2, cfg, pcu_map) if pcu_map is not None else []
+    unmapped = metrics.unmapped_villages(pregs, pcu_map, cfg) if pcu_map is not None else []
 
     ctx = {
         "d1": d1.isoformat(), "d2": d2.isoformat(), "period_label": f"{thai_date(d1)} – {thai_date(d2)}",
@@ -322,7 +322,7 @@ def check_page():
     cfg = load_config()
     pcu_err = None
     try:
-        pcu_map = load_pcu_map(cfg.pcu_map_path)
+        pcu_map = load_village_pcu(cfg.village_csv, cfg.chwpart, cfg.amppart)
     except PcuMapError as e:
         pcu_map, pcu_err = None, str(e)
     return render_template("check.html", lan_only=False, c=check.audit(d1, d2, cfg, pcu_map), cfg=cfg,
@@ -330,25 +330,30 @@ def check_page():
                            pcu_err=pcu_err)
 
 
-@app.route("/check/pcu_map_template.csv")
-def pcu_map_template():
-    """แม่แบบ pcu_map.csv จากหมู่บ้านที่พบในทะเบียนฝากครรภ์ 1 ปีล่าสุด — ไม่มีข้อมูลรายคน"""
+@app.route("/check/village_pcu_template.csv")
+def village_pcu_template():
+    """แม่แบบ village_pcu.csv (รูปแบบเดียวกับ mental_health_dashboard) จากหมู่ในอำเภอที่พบในทะเบียนฝากครรภ์ 1 ปีล่าสุด
+    รวมหมู่ที่จับคู่ไว้แล้ว · คอลัมน์ pregnancies เป็นจำนวนนับ (แอปไม่อ่าน) — ไม่มีข้อมูลรายคน"""
     if not _check_allowed():
         return {"error": "เปิดได้เฉพาะในเครือข่ายโรงพยาบาล"}, 403
     cfg = load_config()
     d2 = date.today()
     try:
-        pcu_map = load_pcu_map(cfg.pcu_map_path)
+        pcu_map = load_village_pcu(cfg.village_csv, cfg.chwpart, cfg.amppart)
     except PcuMapError:
         pcu_map = None
-    rows = check.pcu_template(queries.pregnancies(d2 - timedelta(days=364), d2, cfg), pcu_map)
+    try:
+        pregs = queries.pregnancies(d2 - timedelta(days=364), d2, cfg)
+    except Exception:
+        app.logger.exception("village template failed")
+        return {"error": "ดึงข้อมูลไม่ได้ — รัน setup_check.py"}, 503
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-    w.writerow(["village_code", "pcu_hospcode", "pcu_name", "tambon", "moo", "pregnancies"])
-    w.writerows(rows)
-    # BOM ให้ Excel เปิดภาษาไทยได้ · load_pcu_map อ่านไฟล์ที่มี BOM ได้
-    return Response("﻿" + buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition": "attachment; filename=pcu_map_template.csv"})
+    w.writerow(["tmbpart", "tambon", "moo", "village", "hospcode", "pcu", "pregnancies"])
+    w.writerows(check.village_template(pregs, pcu_map, cfg))
+    # BOM ให้ Excel เปิดภาษาไทยได้ · load_village_pcu อ่านไฟล์ที่มี BOM ได้
+    return Response("\ufeff" + buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=village_pcu_template.csv"})
 
 
 # ---------------------------------------------------------------- ส่งออกไฟล์

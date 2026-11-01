@@ -48,9 +48,9 @@
       {% endfor %}
     </table>
     </div>
-    {% if pcu_err %}<div class="err" style="margin-top:10px">ไฟล์ pcu_map.csv ไม่ถูกต้อง: {{ pcu_err }}</div>{% endif %}
-    <div class="confirm"><a class="btn blue" href="{{ url_for('pcu_map_template') }}">⬇ แม่แบบ pcu_map.csv</a>
-      <span class="hint" style="margin:0">รหัสหมู่บ้านที่พบในทะเบียนฝากครรภ์ 1 ปีล่าสุด + จำนวน · เติม pcu_hospcode / pcu_name แล้วบันทึกเป็น pcu_map.csv (CSV UTF-8)</span></div>
+    {% if pcu_err %}<div class="err" style="margin-top:10px">ไฟล์ village_pcu.csv ไม่ถูกต้อง: {{ pcu_err }}</div>{% endif %}
+    <div class="confirm"><a class="btn blue" href="{{ url_for('village_pcu_template') }}">⬇ แม่แบบ village_pcu.csv</a>
+      <span class="hint" style="margin:0">รูปแบบเดียวกับ mental_health_dashboard (ใช้ไฟล์เดียวกันได้) · หมู่ในอำเภอที่พบในทะเบียนฝากครรภ์ 1 ปีล่าสุด + หมู่ที่จับคู่แล้ว · เติม hospcode / pcu แล้วบันทึกเป็น village_pcu.csv (CSV UTF-8)</span></div>
     </div>
   </section>
 

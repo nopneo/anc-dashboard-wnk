@@ -24,7 +24,8 @@ _TIME_COL = re.compile(r"vsttime|service([1-9]|1[0-9]|20)")
 #: เป้าหมายตัวชี้วัด (%) · anemia และ lbw ยิ่งต่ำยิ่งดี
 TARGET_DEFAULTS = {"early12": 75, "visit5": 75, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7}
 
-PCU_HEADER = ["village_code", "pcu_hospcode", "pcu_name"]
+#: คอลัมน์ที่ต้องมีใน village_pcu.csv (รูปแบบเดียวกับ mental_health_dashboard)
+PCU_COLUMNS = ("tmbpart", "moo", "hospcode", "pcu")
 
 
 class PcuMapError(Exception):
@@ -45,7 +46,10 @@ class Config:
     wait_to_col: str = "service5"
     wait_max_min: int = 240
     targets: dict = field(default_factory=lambda: dict(TARGET_DEFAULTS))
-    pcu_map_path: str = os.path.join(HERE, "pcu_map.csv")
+    village_csv: str = os.path.join(HERE, "village_pcu.csv")
+    chwpart: str = "30"
+    amppart: str = "25"
+    hospcode: str = "10894"
     data_audited: bool = False
     cache_seconds: int = 600
 
@@ -70,7 +74,7 @@ def _col(v, default):
 def load_config(env=os.environ):
     d = Config()
     g = env.get
-    path = g("ANC_PCU_MAP") or d.pcu_map_path
+    path = g("ANC_VILLAGE_CSV") or d.village_csv
     return Config(
         dt_codes=_list(g("ANC_DT_VACCINE_CODES")) or d.dt_codes,
         hct_lab_ids=tuple(int(x) for x in _list(g("ANC_HCT_LAB_IDS")) if x.isdigit()),
@@ -85,7 +89,10 @@ def load_config(env=os.environ):
         wait_max_min=int(_num(g("ANC_WAIT_MAX_MIN"), d.wait_max_min)),
         targets={k: _num(g(f"ANC_TARGET_{k.upper()}" if k != "visit5" else "ANC_TARGET_5VISIT"), v)
                  for k, v in TARGET_DEFAULTS.items()},
-        pcu_map_path=path if os.path.isabs(path) else os.path.join(HERE, path),
+        village_csv=path if os.path.isabs(path) else os.path.join(HERE, path),
+        chwpart=(g("ANC_CHWPART") or d.chwpart).strip().zfill(2),
+        amppart=(g("ANC_AMPPART") or d.amppart).strip().zfill(2),
+        hospcode=(g("ANC_HOSPCODE") or d.hospcode).strip(),
         data_audited=g("ANC_DATA_AUDITED", "0").strip() == "1",
         cache_seconds=int(_num(g("ANC_CACHE_SECONDS"), d.cache_seconds)),
     )
@@ -99,28 +106,28 @@ def village_code(chw, amp, tmb, moo):
     return "".join(p.zfill(2)[-2:] for p in parts)
 
 
-def load_pcu_map(path):
-    """village_code → (pcu_hospcode, pcu_name) · ไม่มีไฟล์ = None
+def load_village_pcu(path, chw, amp):
+    """village_pcu.csv (ไฟล์เดียวกับ mental_health_dashboard: tmbpart,tambon,moo,village,hospcode,pcu)
+    → {หมู่บ้าน 8 หลัก: (hospcode, ชื่อ รพ.สต.)} ของอำเภอ chw/amp · ไม่มีไฟล์ = None
 
-    รับไฟล์ที่ผ่าน Excel มาแล้ว: มี BOM, ช่องว่างรอบค่า, เลข 0 หน้ารหัสหาย (7 หลัก → เติมเป็น 8)
+    แถวละ 1 หมู่ · หมู่ที่ รพ. ดูแลเองใส่ hospcode ของ รพ. · รับไฟล์ที่ผ่าน Excel (BOM ช่องว่าง เลข 0 หน้าหาย)
+    แถวที่ตำบล/หมู่ไม่ใช่ตัวเลขข้ามไป (เหมือน mental_health_dashboard)
     """
     if not os.path.exists(path):
         return None
-    out = {}
     try:
         text = open(path, encoding="utf-8-sig", newline="").read()
     except UnicodeDecodeError:
         raise PcuMapError("ไฟล์ไม่ใช่ UTF-8 — ใน Excel ให้บันทึกเป็น \"CSV UTF-8 (Comma delimited)\"") from None
-    rows = csv.reader(text.splitlines())
-    header = [h.strip() for h in next(rows, [])]
-    if header[:3] != PCU_HEADER:
-        raise PcuMapError(f"หัวตารางต้องเป็น {','.join(PCU_HEADER)} (พบ {','.join(header)})")
-    for n, row in enumerate(rows, start=2):
-        row = [c.strip() for c in row] + ["", "", ""]
-        code, hcode, name = row[:3]
-        if not code and not hcode:
-            continue
-        if not code.isdigit() or len(code) not in (7, 8):
-            raise PcuMapError(f"บรรทัด {n}: village_code '{code}' ต้องเป็นตัวเลข 8 หลัก")
-        out[code.zfill(8)] = (hcode, name)
+    rows = csv.DictReader(text.splitlines())
+    cols = [c.strip() for c in (rows.fieldnames or [])]
+    missing = [c for c in PCU_COLUMNS if c not in cols]
+    if missing:
+        raise PcuMapError(f"ไม่มีคอลัมน์ {', '.join(missing)} — หัวตารางต้องเป็น tmbpart,tambon,moo,village,hospcode,pcu")
+    out = {}
+    for r in rows:
+        r = {(k or "").strip(): (v or "").strip() for k, v in r.items()}
+        code = village_code(chw, amp, r["tmbpart"], r["moo"])
+        if code and r["hospcode"]:
+            out[code] = (r["hospcode"], r["pcu"])
     return out

@@ -83,14 +83,16 @@ def _env_checks():
 
 
 def _pcu_check(cfg):
-    from config import PcuMapError, load_pcu_map
+    from config import PcuMapError, load_village_pcu
     try:
-        m = load_pcu_map(cfg.pcu_map_path)
+        m = load_village_pcu(cfg.village_csv, cfg.chwpart, cfg.amppart)
     except PcuMapError as e:
-        return ("bad", "ไฟล์ pcu_map.csv", f"รูปแบบไม่ถูกต้อง: {e}")
+        return ("bad", "ไฟล์ village_pcu.csv", f"รูปแบบไม่ถูกต้อง: {e}")
     if m is None:
-        return ("warn", "ไฟล์ pcu_map.csv", "ยังไม่มี — ส่วน 'แยกตาม รพ.สต.' จะไม่แสดง (ดาวน์โหลดแม่แบบจากหน้า /check)")
-    return ("ok", "ไฟล์ pcu_map.csv", f"จับคู่ {len(m)} หมู่บ้าน")
+        return ("warn", "ไฟล์ village_pcu.csv", "ยังไม่มี — ส่วน 'แยกตาม รพ.สต.' จะไม่แสดง "
+                "(คัดลอกจาก mental_health_dashboard หรือดาวน์โหลดแม่แบบจากหน้า /check)")
+    return ("ok", "ไฟล์ village_pcu.csv",
+            f"จับคู่ {len(m)} หมู่ · {len(set(m.values()))} หน่วย · อำเภอ {cfg.chwpart}{cfg.amppart}")
 
 
 def _db_checks(fetch):
@@ -138,12 +140,12 @@ def _db_checks(fetch):
 
 def _audit(days, cfg):
     import check
-    from config import PcuMapError, load_pcu_map
+    from config import PcuMapError, load_village_pcu
     d2 = date.today()
     d1 = d2 - timedelta(days=days - 1)
     try:
         try:
-            m = load_pcu_map(cfg.pcu_map_path)
+            m = load_village_pcu(cfg.village_csv, cfg.chwpart, cfg.amppart)
         except PcuMapError:
             m = None
         a = check.audit(d1, d2, cfg, m)

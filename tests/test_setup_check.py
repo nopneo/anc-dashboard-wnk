@@ -65,14 +65,14 @@ def test_stale_visits_warn():
 
 
 def test_pcu_map_states(tmp_path, monkeypatch):
-    monkeypatch.setenv("ANC_PCU_MAP", str(tmp_path / "none.csv"))
+    monkeypatch.setenv("ANC_VILLAGE_CSV", str(tmp_path / "none.csv"))
     rows = setup_check.run(fetch=fake(), audit=False)
-    assert any(s == "warn" and "pcu_map" in t for s, t, _ in rows)
+    assert any(s == "warn" and "village_pcu" in t for s, t, _ in rows)
     bad = tmp_path / "bad.csv"
     bad.write_text("x\n", encoding="utf-8")
-    monkeypatch.setenv("ANC_PCU_MAP", str(bad))
+    monkeypatch.setenv("ANC_VILLAGE_CSV", str(bad))
     rows = setup_check.run(fetch=fake(), audit=False)
-    assert any(s == "bad" and "pcu_map" in t for s, t, _ in rows)
+    assert any(s == "bad" and "village_pcu" in t for s, t, _ in rows)
 
 
 def test_exit_code_1_on_bad(monkeypatch):

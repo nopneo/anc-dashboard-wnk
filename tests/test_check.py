@@ -57,8 +57,8 @@ def test_audit_flags_missing_pcu_map(monkeypatch, data):
 
 def test_audit_pcu_map_unmapped_warns(monkeypatch, data):
     monkeypatch.setattr(check, "fetch", Router({}))
-    a = check.audit(D1, D2, CFG, {"30250101": ("03929", "รพ.สต.ก")})
-    assert _item(a, "pcu_map")["status"] == "warn"      # 2 ใน 3 ครรภ์ไม่ได้จับคู่
+    a = check.audit(D1, D2, CFG, {"30250102": ("03929", "รพ.สต.ก")})
+    assert _item(a, "pcu_map")["status"] == "warn"      # 30250101 กับครรภ์ไม่มีที่อยู่ = ในอำเภอ ไม่ทราบหมู่
 
 
 def test_audit_dt_warns_on_other_codes(monkeypatch, data):
@@ -120,9 +120,9 @@ def test_section_query_failure_does_not_break_audit(monkeypatch, data):
 
 @pytest.fixture
 def client(monkeypatch, tmp_path, data):
-    m = tmp_path / "pcu_map.csv"
-    m.write_text("village_code,pcu_hospcode,pcu_name\n30250101,03929,รพ.สต.ก\n", encoding="utf-8")
-    monkeypatch.setenv("ANC_PCU_MAP", str(m))
+    m = tmp_path / "village_pcu.csv"
+    m.write_text("tmbpart,tambon,moo,village,hospcode,pcu\n01,วังน้ำเขียว,1,บ้านก,03929,รพ.สต.ก\n", encoding="utf-8")
+    monkeypatch.setenv("ANC_VILLAGE_CSV", str(m))
     monkeypatch.delenv("ANC_CHECK_OPEN", raising=False)
     monkeypatch.setattr(check, "fetch", Router({"from thaiaddress": [{"addressid": "302501", "name": "ไทยสามัคคี"}]}))
     appmod.app.config["TESTING"] = True
@@ -140,18 +140,19 @@ def test_check_open_env(client, monkeypatch):
     assert client.get("/check", environ_base={"REMOTE_ADDR": "8.8.8.8"}).status_code == 200
 
 
-def test_template_csv_has_no_person_columns(client):
-    r = client.get("/check/pcu_map_template.csv", environ_base=LAN)
+def test_template_csv_is_village_pcu_format(client):
+    """แม่แบบเป็นรูปแบบ village_pcu.csv ของ mental_health_dashboard (+ จำนวนครรภ์) เฉพาะหมู่ในอำเภอ ไม่มีข้อมูลรายคน"""
+    r = client.get("/check/village_pcu_template.csv", environ_base=LAN)
     body = r.get_data(as_text=True)
     lines = body.splitlines()
-    assert lines[0].lstrip("﻿") == "village_code,pcu_hospcode,pcu_name,tambon,moo,pregnancies"
-    assert "30250101,03929,รพ.สต.ก,ไทยสามัคคี,01,1" in lines
-    assert "11111111,,,,11,1" in lines
+    assert lines[0].lstrip("﻿") == "tmbpart,tambon,moo,village,hospcode,pcu,pregnancies"
+    assert "01,ไทยสามัคคี,1,,03929,รพ.สต.ก,1" in lines            # ชื่อหมู่บ้านมาจากตาราง village ของ HOSxP
+    assert not any(l.startswith("11,") for l in lines[1:])          # 11111111 อยู่นอกอำเภอ
     assert "HN-SECRET" not in body and r.mimetype == "text/csv"
 
 
 def test_template_csv_lan_only(client):
-    assert client.get("/check/pcu_map_template.csv", environ_base={"REMOTE_ADDR": "8.8.8.8"}).status_code == 403
+    assert client.get("/check/village_pcu_template.csv", environ_base={"REMOTE_ADDR": "8.8.8.8"}).status_code == 403
 
 
 def test_audit_leap_day_start(monkeypatch, data):

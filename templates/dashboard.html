@@ -292,11 +292,11 @@
 
   <!-- ============================================================ 5. PCU -->
   <section class="panel">
-    <div class="ph"><span class="ic">🏘️</span><h3>แยกตาม รพ.สต.</h3><small>จัดตามหมู่บ้านที่อยู่ของแม่ (รหัสหมู่บ้าน 8 หลัก)</small></div>
+    <div class="ph"><span class="ic">🏘️</span><h3>แยกตาม รพ.สต.</h3><small>ตำบล + หมู่ในที่อยู่ของแม่ เทียบ village_pcu.csv (แบบ mental_health_dashboard)</small></div>
     <div class="pb">
     {{ sec_error('pcu') }}
     {% if d.pcu_missing %}
-      <div class="empty">ยังไม่ได้ตั้งค่าการจับคู่หมู่บ้าน → รพ.สต. (ไฟล์ <b>pcu_map.csv</b>)
+      <div class="empty">ยังไม่ได้ตั้งค่าการจับคู่หมู่บ้าน → รพ.สต. (ไฟล์ <b>village_pcu.csv</b> แบบเดียวกับ mental_health_dashboard)
         {% if check_allowed and not print_mode %}— ดาวน์โหลดแม่แบบได้ที่ <a href="{{ url_for('check_page') }}">หน้าตรวจข้อมูล</a>{% endif %}</div>
     {% elif d.pcu %}
     <div class="scroll">
@@ -305,7 +305,7 @@
         <th class="n">ก่อน 12 wk</th><th class="n">ครบ 5 ครั้ง</th><th class="n">dT</th><th class="n">โลหิตจาง</th>
         <th class="n">LBW</th><th class="n">Refer</th></tr>
       {% for r in d.pcu %}
-      <tr><td class="id">{{ r.name }} {% if r.hospcode %}<span class="code">{{ r.hospcode }}</span>{% endif %}</td>
+      <tr><td class="id">{{ r.name }} {% if r.hospcode not in ('unk', 'out') %}<span class="code">{{ r.hospcode }}</span>{% endif %}</td>
         <td class="n">{{ r.new }}</td><td class="n">{{ r.teen }}</td><td class="n">{{ r.repro }}</td><td class="n">{{ r.elder }}</td>
         <td class="n">{{ rate(r.early12) }}</td><td class="n">{{ rate(r.visit5) }}</td><td class="n">{{ rate(r.dt) }}</td>
         <td class="n">{{ rate(r.anemia) }}</td><td class="n">{{ rate(r.lbw) }}</td><td class="n">{{ '—' if rerr else r.refer }}</td></tr>
@@ -400,7 +400,7 @@
     <div class="head">⚡ เมนูด่วน</div>
     {% if check_allowed %}
     <a class="q-sky" href="{{ url_for('check_page') }}"><span class="qi">🔎</span>ตรวจข้อมูลก่อนใช้</a>
-    <a class="q-mint" href="{{ url_for('pcu_map_template') }}"><span class="qi">🏘️</span>แม่แบบ pcu_map.csv</a>
+    <a class="q-mint" href="{{ url_for('village_pcu_template') }}"><span class="qi">🏘️</span>แม่แบบ village_pcu.csv</a>
     {% endif %}
     {% if export_enabled %}{% set q = '?d1=' ~ d.d1 ~ '&d2=' ~ d.d2 %}
     <a class="q-pink dl" href="{{ url_for('export', fmt='jpg') }}{{ q }}"><span class="qi">🖼️</span>ส่งออก JPG</a>

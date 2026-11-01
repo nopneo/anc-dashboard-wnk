@@ -1,6 +1,6 @@
 import pytest
 
-from config import PcuMapError, load_config, load_pcu_map, village_code
+from config import PcuMapError, load_config, load_village_pcu, village_code
 
 
 def test_defaults():
@@ -25,28 +25,28 @@ def test_targets_and_flags_from_env():
     assert c.targets["lbw"] == 6.5 and c.data_audited is True and c.hct_lab_ids == (3, 8)
 
 
-def test_pcu_map_missing_returns_none(tmp_path):
-    assert load_pcu_map(str(tmp_path / "none.csv")) is None
+HDR = "tmbpart,tambon,moo,village,hospcode,pcu\n"
 
 
-def test_pcu_map_excel_quirks(tmp_path):
-    p = tmp_path / "m.csv"
-    p.write_text("﻿village_code,pcu_hospcode,pcu_name\n 3025010 ,03929, รพ.สต.ไทยสามัคคี \n,,\n", encoding="utf-8")
-    assert load_pcu_map(str(p)) == {"03025010": ("03929", "รพ.สต.ไทยสามัคคี")}
+def test_village_pcu_missing_returns_none(tmp_path):
+    assert load_village_pcu(str(tmp_path / "none.csv"), "30", "25") is None
 
 
-def test_pcu_map_bad_header(tmp_path):
-    p = tmp_path / "m.csv"
+def test_village_pcu_mental_health_format(tmp_path):
+    """รูปแบบเดียวกับ mental_health_dashboard: ตำบล + หมู่ → รหัส/ชื่อ รพ.สต. · ใช้ไฟล์เดียวกันได้"""
+    p = tmp_path / "v.csv"
+    p.write_text("﻿" + HDR + " 2 ,วังหมี, 1 ,บ้านวังหมี, 02842 , ท่าวังไทร \n"
+                 "01,วังน้ำเขียว,10,บุตะโก,10894,รพ.วังน้ำเขียว\n"
+                 "01,x,abc,x,1,x\n", encoding="utf-8")
+    assert load_village_pcu(str(p), "30", "25") == {"30250201": ("02842", "ท่าวังไทร"),
+                                                     "30250110": ("10894", "รพ.วังน้ำเขียว")}
+
+
+def test_village_pcu_bad_header(tmp_path):
+    p = tmp_path / "v.csv"
     p.write_text("a,b\n1,2\n", encoding="utf-8")
     with pytest.raises(PcuMapError):
-        load_pcu_map(str(p))
-
-
-def test_pcu_map_bad_code(tmp_path):
-    p = tmp_path / "m.csv"
-    p.write_text("village_code,pcu_hospcode,pcu_name\nabc,1,x\n", encoding="utf-8")
-    with pytest.raises(PcuMapError):
-        load_pcu_map(str(p))
+        load_village_pcu(str(p), "30", "25")
 
 
 def test_village_code():
@@ -55,11 +55,18 @@ def test_village_code():
     assert village_code("30", "25", "01", "") is None
 
 
-def test_pcu_map_non_utf8_is_pcu_error(tmp_path):
-    p = tmp_path / "m.csv"
-    p.write_bytes("village_code,pcu_hospcode,pcu_name\n30250101,03929,รพ.สต.ก\n".encode("cp874"))
+def test_village_pcu_non_utf8_is_pcu_error(tmp_path):
+    p = tmp_path / "v.csv"
+    p.write_bytes((HDR + "01,วังน้ำเขียว,1,ศาลเจ้าพ่อ,02840,ศาลเจ้าพ่อ\n").encode("cp874"))
     with pytest.raises(PcuMapError, match="UTF-8"):
-        load_pcu_map(str(p))
+        load_village_pcu(str(p), "30", "25")
+
+
+def test_district_defaults():
+    c = load_config({})
+    assert (c.chwpart, c.amppart, c.hospcode) == ("30", "25", "10894")
+    assert c.village_csv.endswith("village_pcu.csv")
+    assert load_config({"ANC_VILLAGE_CSV": "/x/v.csv"}).village_csv.replace("\\", "/").endswith("/x/v.csv")
 
 
 def test_dead_dchstts_default():
