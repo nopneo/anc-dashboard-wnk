@@ -134,13 +134,14 @@ body {
 .kpi .v { font-family: 'Kanit'; font-weight: 700; font-size: 40px; line-height: 1.1; margin-top: 8px; }
 .kpi .u { font-size: 13px; opacity: .92; }
 .kpi .tg { display: inline-block; margin-top: 6px; font-size: 12px; background: rgba(255,255,255,.22); border-radius: 20px; padding: 1px 9px; }
-.g1 { background: linear-gradient(135deg, #AD1457, #E91E63); }
-.g2 { background: linear-gradient(135deg, #C2185B, #F06292); }
-.g3 { background: linear-gradient(135deg, #D81B60, #F48FB1); }
-.g4 { background: linear-gradient(135deg, #8E24AA, #CE93D8); }
-.g5 { background: linear-gradient(135deg, #6A1B9A, #BA68C8); }
-.g6 { background: linear-gradient(135deg, #EF6C00, #FFB74D); }
-.g7 { background: linear-gradient(135deg, #00897B, #4DB6AC); }
+/* การ์ด KPI สีสดแยกกันชัด: น้ำเงิน เขียว ส้ม ม่วง เขียวมรกต แดง ชมพู */
+.g1 { background: linear-gradient(135deg, #1565C0, #42A5F5); }
+.g2 { background: linear-gradient(135deg, #2E7D32, #66BB6A); }
+.g3 { background: linear-gradient(135deg, #EF6C00, #FFA726); }
+.g4 { background: linear-gradient(135deg, #6A1B9A, #AB47BC); }
+.g5 { background: linear-gradient(135deg, #00897B, #26A69A); }
+.g6 { background: linear-gradient(135deg, #C62828, #EF5350); }
+.g7 { background: linear-gradient(135deg, #AD1457, #EC407A); }
 
 /* tables */
 table.t { width: 100%; border-collapse: collapse; font-size: 15px; }
