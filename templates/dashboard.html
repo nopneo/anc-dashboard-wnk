@@ -285,7 +285,7 @@
     <header><span class="no">9</span>
       <span><span class="t">สรุป Refer รายเดือน</span> <span class="st">เดือน × กลุ่ม Dx × ปลายทาง · เวลาจากรับบริการถึง refer</span></span></header>
     {% if d.refer.table %}
-    <div class="scroll" style="max-height:430px;overflow-y:auto">
+    <div class="scroll{{ '' if print_mode else ' scroll-y' }}">
     <table class="t">
       <tr><th>เดือน</th><th>กลุ่ม Dx</th><th>ปลายทาง</th><th class="n">ครั้ง</th><th class="n">เวลาเฉลี่ย (นาที)</th></tr>
       {% for r in d.refer.table %}

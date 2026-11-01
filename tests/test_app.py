@@ -128,3 +128,28 @@ def test_bad_pcu_map_is_section_error(client, fake_data, monkeypatch, tmp_path):
     monkeypatch.setenv("ANC_PCU_MAP", str(bad))
     html = _html(client)
     assert "pcu_map.csv" in html and "ANC KPI Summary" in html
+
+
+def test_export_disabled_returns_404(client, monkeypatch):
+    monkeypatch.setattr(appmod, "EXPORT_ENABLED", False)
+    assert client.get("/export.jpg").status_code == 404
+    assert client.get("/export.exe").status_code == 404
+
+
+def test_export_renders_print_url(client, monkeypatch):
+    seen = {}
+
+    def fake_render(fmt, url, out):
+        seen["url"] = url
+        open(out, "wb").write(b"JPEGDATA")
+    monkeypatch.setattr(appmod.render, "render_to", fake_render)
+    appmod._export_cache._data.clear()
+    r = client.get("/export.jpg?d1=2026-01-01&d2=2026-01-31")
+    assert r.status_code == 200 and r.data == b"JPEGDATA" and "print=1" in seen["url"]
+    assert "anc_2026-01-01_2026-01-31.jpg" in r.headers["Content-Disposition"]
+
+
+def test_refer_table_not_clipped_in_print(client, fake_data):
+    """ไฟล์ส่งออก (?print=1) ต้องเห็นตาราง refer ครบ ไม่ใช่กรอบเลื่อน"""
+    assert "scroll-y" in _html(client)
+    assert "scroll-y" not in _html(client, "/?d1=2026-01-01&d2=2026-06-30&print=1")

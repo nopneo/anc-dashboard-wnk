@@ -152,6 +152,7 @@ table.t td.n, table.t th.n { text-align: right; font-variant-numeric: tabular-nu
 table.t tr.total td { font-weight: 700; background: var(--pink-100); }
 table.t .src { color: var(--muted); font-size: 12px; }
 .scroll { overflow-x: auto; }
+.scroll-y { max-height: 430px; overflow-y: auto; }
 .bad { color: var(--bad); font-weight: 700; }
 .good { color: var(--ok); font-weight: 600; }
 .low { opacity: .5; }

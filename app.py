@@ -10,12 +10,23 @@ import ipaddress
 import json
 import os
 import re
+import tempfile
+import threading
+import time
+import urllib.parse
 from datetime import date, datetime, timedelta
+from io import BytesIO
 
-from flask import Flask, Response, render_template, request, url_for
+try:
+    import fcntl                      # Linux/macOS — ล็อกไฟล์ข้ามโปรเซสของ gunicorn
+except ImportError:                   # Windows
+    fcntl = None
+
+from flask import Flask, Response, render_template, request, send_file, url_for
 
 import check
 import db
+import render
 import metrics
 import queries
 from cache import TTLCache
@@ -316,6 +327,85 @@ def pcu_map_template():
     # BOM ให้ Excel เปิดภาษาไทยได้ · load_pcu_map อ่านไฟล์ที่มี BOM ได้
     return Response("﻿" + buf.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": "attachment; filename=pcu_map_template.csv"})
+
+
+# ---------------------------------------------------------------- ส่งออกไฟล์
+
+class _RenderLock:
+    """เรนเดอร์ทีละงานทั้งเครื่อง — chromium กินแรมสูง (ล็อกไฟล์ข้าม worker ของ gunicorn)"""
+
+    def __init__(self, path):
+        self._path = path
+        self._thread = threading.Lock()
+        self._fd = None
+
+    def acquire(self, timeout):
+        deadline = time.monotonic() + timeout
+        got = self._thread.acquire(timeout=timeout) if timeout > 0 else self._thread.acquire(blocking=False)
+        if not got:
+            return False
+        if fcntl is None:
+            return True
+        fd = os.open(self._path, os.O_CREAT | os.O_RDWR, 0o600)
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self._fd = fd
+                return True
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    os.close(fd)
+                    self._thread.release()
+                    return False
+                time.sleep(0.5)
+
+    def release(self):
+        if self._fd is not None:
+            fd, self._fd = self._fd, None
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+        self._thread.release()
+
+
+_render_lock = _RenderLock(os.path.join(tempfile.gettempdir(), "anc_dashboard_render.lock"))
+EXPORT_WAIT = int(os.getenv("ANC_EXPORT_WAIT", "0"))
+EXPORT_CACHE_TTL = int(os.getenv("ANC_EXPORT_CACHE_TTL", "300"))
+_export_cache = TTLCache(maxsize=8)
+EXPORT_ENABLED = os.getenv("ANC_EXPORT", "1") != "0"
+MIME = {"png": "image/png", "jpg": "image/jpeg", "pdf": "application/pdf"}
+
+
+@app.context_processor
+def _export_flag():
+    return {"export_enabled": EXPORT_ENABLED}
+
+
+@app.route("/export.<fmt>")
+def export(fmt):
+    """ส่งออกหน้าแดชบอร์ดเป็น PNG / JPG / PDF ด้วย chromium headless (เรียกหน้าเดิมด้วย ?print=1 — ไม่มีแถบเตือน)"""
+    if fmt not in MIME or not EXPORT_ENABLED:
+        return {"error": "รองรับเฉพาะ png, jpg, pdf" if EXPORT_ENABLED else "ปิดการส่งออกไฟล์"}, 404
+    d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
+    qs = urllib.parse.urlencode({"d1": d1.isoformat(), "d2": d2.isoformat(), "print": "1"})
+    url = f"http://127.0.0.1:{os.getenv('PORT', '6300')}/?{qs}"
+    name = f"anc_{d1}_{d2}.{fmt}"
+    blob = _export_cache.get(name, EXPORT_CACHE_TTL)
+    if blob is not None:
+        return send_file(BytesIO(blob), mimetype=MIME[fmt], as_attachment=True, download_name=name)
+    if not _render_lock.acquire(timeout=EXPORT_WAIT):
+        return ({"error": "กำลังส่งออกไฟล์ของผู้ใช้อื่นอยู่ ลองใหม่ในอีกครู่"}, 503, {"Retry-After": "30"})
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, name)
+            render.render_to(fmt, url, out)
+            blob = open(out, "rb").read()
+        _export_cache.set(name, blob)
+        return send_file(BytesIO(blob), mimetype=MIME[fmt], as_attachment=True, download_name=name)
+    except Exception as e:
+        app.logger.exception("export failed")
+        return {"error": f"ส่งออกไม่สำเร็จ: {type(e).__name__}"}, 500
+    finally:
+        _render_lock.release()
 
 
 @app.route("/healthz")
