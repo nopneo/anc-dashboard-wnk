@@ -185,3 +185,10 @@ def test_audit_kpi_code_items(monkeypatch, data):
 def test_audit_iodine_none_found_warns(monkeypatch, data):
     monkeypatch.setattr(check, "fetch", Router({}))
     assert _item(check.audit(D1, D2, CFG, None), "iodine_did")["status"] == "warn"
+
+
+def test_audit_outcome_codes(monkeypatch, data):
+    monkeypatch.setattr(check, "fetch", Router({"from ipt_labour_infant": [{"code": "Apgar1 < 7", "name": "", "n": "3"}],
+                                                "from iptdiag": [{"code": "O60", "name": "", "n": "24"}]}))
+    it = _item(check.audit(D1, D2, CFG, None), "outcome_codes")
+    assert it["env"].startswith("ANC_ASPHYXIA_APGAR") and any(f["code"] == "O60" for f in it["found"])

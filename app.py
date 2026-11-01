@@ -214,6 +214,8 @@ def build_context(d1, d2, scope="area"):
     ind = metrics.indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=pnc, area=area)
     age = metrics.by_age(pregs, visits, d1, d2, cfg, area=area)
 
+    risk_types = _safe(errors, "risk", lambda: queries.risk_types(d1, d2), [])
+    outcome = metrics.outcomes(pregs, infants, risk_types, d1, d2, cfg, area=area)
     refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(queries.refers(d1, d2), pregs, cfg), [])
     refer = metrics.refer_summary(refer_rows, d1, d2)
 
@@ -230,7 +232,8 @@ def build_context(d1, d2, scope="area"):
         "trend": metrics.monthly_trend(pregs, visits, d1, d2),
         "pcu": pcu, "pcu_missing": pcu_map is None and "pcu" not in errors,
         "unmapped": unmapped, "refer": refer,
-        "alerts": metrics.alerts(ind, pcu, age, unmapped) if "main" not in errors else [],
+        "outcome": outcome,
+        "alerts": metrics.alerts(ind, pcu, age, unmapped, outcome) if "main" not in errors else [],
         "errors": errors, "audited": cfg.data_audited, "cfg_targets": cfg.targets,
         "hct_cutoff": cfg.hct_cutoff, "hct_late_ga": cfg.hct_late_ga, "lbw_grams": cfg.lbw_grams,
         "postpartum_days": cfg.postpartum_days,

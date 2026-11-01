@@ -136,12 +136,37 @@ select a.person_anc_id anc_id, pt.hn,
                    and lh.order_date between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s))
         or exists (select 1 from ovstdiag x where x.hn = pt.hn and x.icd10 in %(dmdx)s
                     and x.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s))
-       ) q_dm
+       ) q_dm,
+       (a.has_risk = 'Y' or exists (select 1 from person_anc_risk r where r.person_anc_id = a.person_anc_id)
+        or exists (select 1 from person_anc_classifying c where c.person_anc_id = a.person_anc_id and c.check_value = 'Y')) has_risk,
+       (exists (select 1 from ovstdiag x where x.hn = pt.hn and (left(x.icd10, 3) in %(htn)s or left(x.icd10, 4) in %(htn)s)
+                and x.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date + interval 42 day, %(d2)s))
+        or exists (select 1 from iptdiag y join ipt on ipt.an = y.an where ipt.hn = pt.hn
+                and (left(y.icd10, 3) in %(htn)s or left(y.icd10, 4) in %(htn)s)
+                and ipt.dchdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date + interval 42 day, %(d2)s))) cx_htn,
+       (exists (select 1 from ovstdiag x where x.hn = pt.hn and (left(x.icd10, 3) in %(gdm)s or left(x.icd10, 4) in %(gdm)s)
+                and x.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date + interval 42 day, %(d2)s))
+        or exists (select 1 from iptdiag y join ipt on ipt.an = y.an where ipt.hn = pt.hn
+                and (left(y.icd10, 3) in %(gdm)s or left(y.icd10, 4) in %(gdm)s)
+                and ipt.dchdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date + interval 42 day, %(d2)s))) cx_gdm,
+       (exists (select 1 from ovstdiag x where x.hn = pt.hn and (left(x.icd10, 3) in %(pph)s or left(x.icd10, 4) in %(pph)s)
+                and x.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date + interval 42 day, %(d2)s))
+        or exists (select 1 from iptdiag y join ipt on ipt.an = y.an where ipt.hn = pt.hn
+                and (left(y.icd10, 3) in %(pph)s or left(y.icd10, 4) in %(pph)s)
+                and ipt.dchdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date + interval 42 day, %(d2)s))) cx_pph,
+       (exists (select 1 from ovstdiag x where x.hn = pt.hn and (left(x.icd10, 3) in %(pre)s or left(x.icd10, 4) in %(pre)s)
+                and x.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date + interval 42 day, %(d2)s))
+        or exists (select 1 from iptdiag y join ipt on ipt.an = y.an where ipt.hn = pt.hn
+                and (left(y.icd10, 3) in %(pre)s or left(y.icd10, 4) in %(pre)s)
+                and ipt.dchdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date + interval 42 day, %(d2)s))) cx_preterm,
+       case when pe.death = 'Y' then pe.death_date end death_date,
+       lh.name labour_place
   from person_anc a
   join person pe on pe.person_id = a.person_id
   left join patient pt on pt.hn = coalesce(nullif(pe.patient_hn, ''),
         (select p2.hn from patient p2 where p2.cid = pe.cid and pe.cid <> '' limit 1))
   left join village v on v.village_id = pe.village_id
+  left join hospcode lh on lh.hospcode = a.labour_hospcode
  where a.anc_register_date between %(rmin)s and %(d2)s
 """
 
@@ -152,7 +177,9 @@ def pregnancies(d1, d2, cfg):
     args = {"hct": hct, "late": cfg.hct_late_ga, "dt": tuple(cfg.dt_codes), "d2": d2,
             "rmin": d1 - timedelta(days=REG_LOOKBACK_DAYS), "iod": _nonempty(cfg.iodine_didstd),
             "cbc": _nonempty(cbc), "dm": _nonempty(dm), "thal": _nonempty(cfg.thal_export_codes),
-            "us": _nonempty(cfg.us_icd9), "down": _nonempty(cfg.down_dx), "dmdx": _nonempty(cfg.dm_dx)}
+            "us": _nonempty(cfg.us_icd9), "down": _nonempty(cfg.down_dx), "dmdx": _nonempty(cfg.dm_dx),
+            "htn": _nonempty(cfg.dx_htn), "gdm": _nonempty(cfg.dx_gdm), "pph": _nonempty(cfg.dx_pph),
+            "pre": _nonempty(cfg.dx_preterm)}
     out = []
     for r in fetch(PREGNANCIES, args):
         out.append({"anc_id": int(num(r["anc_id"])), "hn": r.get("hn"), "age": _int_or_none(r.get("age")),
@@ -164,7 +191,11 @@ def pregnancies(d1, d2, cfg):
                     "labour_hospcode": (str(r.get("labour_hospcode") or "").strip() or None),
                     "has_iodine": _flag(r.get("has_iodine")), "q_cbc": _flag(r.get("q_cbc")),
                     "q_thal": _flag(r.get("q_thal")), "q_us": _flag(r.get("q_us")),
-                    "q_down": _flag(r.get("q_down")), "q_dm": _flag(r.get("q_dm"))})
+                    "q_down": _flag(r.get("q_down")), "q_dm": _flag(r.get("q_dm")),
+                    "has_risk": _flag(r.get("has_risk")), "cx_htn": _flag(r.get("cx_htn")),
+                    "cx_gdm": _flag(r.get("cx_gdm")), "cx_pph": _flag(r.get("cx_pph")),
+                    "cx_preterm": _flag(r.get("cx_preterm")), "death_date": _date(r.get("death_date")),
+                    "labour_place": r.get("labour_place") or None})
     return out
 
 
@@ -210,6 +241,7 @@ def postnatal(anc_ids):
 
 INFANTS = """
 select i.birth_date, i.birth_weight weight, coalesce(n.dead, 'N') dead, i.infant_dchstts dchstts,
+       i.apgar_score_min1 apgar1, i.has_birth_asphyxia asphyxia, i.infant_delivery_type_id delivery_type,
        pt.chwpart, pt.amppart, pt.tmbpart, pt.moopart
   from ipt_labour_infant i
   join ipt_labour il on il.ipt_labour_id = i.ipt_labour_id
@@ -226,7 +258,9 @@ def infants(d1, d2, dead_dchstts=("08", "09")):
     dead = tuple(dead_dchstts)
     return [{"birth_date": _date(r.get("birth_date")), "weight": _int_or_none(r.get("weight")) or None,
              "alive": str(r.get("dead") or "N").upper() != "Y" and str(r.get("dchstts") or "").strip() not in dead,
-             "village": _village(r)}
+             "village": _village(r), "apgar1": _int_or_none(r.get("apgar1")),
+             "asphyxia": str(r.get("asphyxia") or "").strip().upper() == "Y",
+             "delivery_type": (str(r.get("delivery_type") or "").strip() or None)}
             for r in fetch(INFANTS, {"d1": d1, "d2": d2, "dead": dead})]
 
 
@@ -272,3 +306,17 @@ def refers(d1, d2):
                     "dest_name": r.get("dest_name") or None, "age": _int_or_none(r.get("age")),
                     "village": _village(r), "minutes": m if m is not None and m >= 0 else None})
     return out
+
+
+def risk_types(d1, d2):
+    """ประเภทความเสี่ยงของครรภ์ที่ลงทะเบียนในช่วง — แบบคัดกรองความเสี่ยง person_anc_classifying ที่ตอบ 'Y'
+    (person_anc_risk ไม่ถูกใช้แล้วในข้อมูลจริง) — จำนวนนับ"""
+    rows = fetch("""
+select coalesce(nullif(i.person_anc_classifying_item_name, ''), concat('ข้อ ', c.person_anc_classifying_item_id)) name,
+       count(distinct c.person_anc_id) n
+  from person_anc_classifying c
+  join person_anc a on a.person_anc_id = c.person_anc_id
+  left join person_anc_classifying_item i on i.person_anc_classifying_item_id = c.person_anc_classifying_item_id
+ where a.anc_register_date between %(d1)s and %(d2)s and c.check_value = 'Y'
+ group by c.person_anc_classifying_item_id, i.person_anc_classifying_item_name""", {"d1": d1, "d2": d2})
+    return [{"name": r.get("name") or "", "n": int(num(r.get("n")))} for r in rows]

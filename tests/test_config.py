@@ -10,7 +10,7 @@ def test_defaults():
     assert c.postpartum_days == 42
     assert c.refer_dx_prefixes == ("O", "Z32", "Z33", "Z34", "Z35", "Z36")
     assert c.targets == {"early12": 75, "visit5": 75, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7,
-                         "postnatal": 75, "quality": 70, "iodine": None}
+                         "postnatal": 75, "quality": 70, "iodine": None, "asphyxia": 25}
     assert c.wait_from_col == "vsttime" and c.wait_to_col == "service5"
     assert c.wait_max_min == 240 and c.data_audited is False
 

@@ -315,6 +315,57 @@
     </div>
   </div>
 
+  <!-- ============================================================ 11. outcomes -->
+  {% set o = d.outcome %}
+  <section class="panel">
+    <div class="ph"><span class="ic">👶</span><h3>ผลลัพธ์แม่และทารก</h3>
+      <small>ครรภ์เสี่ยงในรายใหม่ · ผลอื่นจากครรภ์ที่คลอดในช่วง (ตัวหาร{{ d.scope_label }}) และทารกเกิดใน รพ.</small></div>
+    <div class="pb">
+      <div class="otiles">
+        <div class="otile"><span class="ol">ครรภ์เสี่ยงสูง</span><b>{{ rate(o.risk) }}</b>
+          <small>{{ o.risk.num }}/{{ o.risk.den }} รายใหม่</small></div>
+        <div class="otile"><span class="ol">คลอดก่อนกำหนด &lt; 37 wk</span><b>{{ rate(o.preterm) }}</b>
+          <small>{{ o.preterm.num }}/{{ o.preterm.den }} · GA จาก LMP ถึงวันคลอด</small></div>
+        <div class="otile {{ 'bad-tile' if o.asphyxia.ok is sameas false }}"><span class="ol">ทารกแรกเกิดขาดออกซิเจน</span>
+          <b>{{ fmt(o.asphyxia.value) }}</b>
+          <small>ต่อ 1,000 เกิดมีชีพ · {{ o.asphyxia.num }}/{{ o.asphyxia.den }} · เป้า ≤ {{ o.asphyxia.target }}</small></div>
+        <div class="otile"><span class="ol">คลอดที่ รพ.</span><b>{{ fmt(o.place.pct_here) }}{{ '%' if o.place.pct_here is not none }}</b>
+          <small>{{ o.place.here }}/{{ o.place.den }} · BBA {{ o.bba }} ราย</small></div>
+        <div class="otile {{ 'bad-tile' if o.maternal_death }}"><span class="ol">มารดาเสียชีวิต</span><b>{{ o.maternal_death }}</b>
+          <small>ราย · ตั้งครรภ์ถึงหลังคลอด {{ d.postpartum_days }} วัน</small></div>
+        <div class="otile {{ 'bad-tile' if o.stillbirth }}"><span class="ol">ทารกตายคลอด</span><b>{{ o.stillbirth }}</b>
+          <small>ราย · คลอดใน รพ.</small></div>
+      </div>
+      <div class="grid g-11" style="margin-top:14px">
+        <div>
+          <h4 class="k sub-h">ภาวะแทรกซ้อน <small>Dx ระหว่างตั้งครรภ์ถึงหลังคลอด 42 วัน · ในครรภ์ที่คลอด</small></h4>
+          <ol class="plist">
+            {% for c in o.complications %}
+            <li><span class="nm">{{ c.label }}</span><span class="vl">{{ c.num }} · {{ fmt(c.value) }}{{ '%' if c.value is not none }}</span>
+              <div class="track"><span style="width:{{ [c.value or 0, 100] | min }}%"></span></div></li>
+            {% endfor %}
+          </ol>
+        </div>
+        <div>
+          <h4 class="k sub-h">ประเภทความเสี่ยง <small>ครรภ์รายใหม่ (แบบคัดกรองความเสี่ยง)</small></h4>
+          {% if d.errors.get('risk') %}<div class="err">⚠ {{ d.errors['risk'] }}</div>
+          {% elif o.risk_types %}{% set mx = o.risk_types[0].n %}
+          <ol class="plist">
+            {% for r in o.risk_types %}
+            <li><span class="nm" title="{{ r.name }}">{{ r.name }}</span><span class="vl">{{ r.n }} ราย</span>
+              <div class="track"><span style="width:{{ (100 * r.n / mx) | round(1) }}%"></span></div></li>
+            {% endfor %}
+          </ol>
+          {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
+          {% if o.place.top %}
+          <h4 class="k sub-h" style="margin-top:10px">คลอดที่อื่น</h4>
+          <ul class="legend">{% for x in o.place.top %}<li><span class="nm">{{ x.name }}</span><span class="vl">{{ x.n }}</span></li>{% endfor %}</ul>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============================================================ 6. refer monthly -->
   <div class="grid">
     <section class="panel">

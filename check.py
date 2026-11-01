@@ -225,6 +225,26 @@ select tr.thalassaemia_result_export code, tr.thalassaemia_result_name name, cou
                  else "ไม่พบรหัสผลคัดกรองที่ตรงกับค่าที่ตั้ง")
 
 
+def _outcome_codes(d1, d2, cfg):
+    infants = fetch("""
+select concat('Apgar1 < ', %(ap)s) code, '' name, sum(apgar_score_min1 < %(ap)s) n from ipt_labour_infant
+ where birth_date between %(d1)s and %(d2)s
+union all
+select concat('BBA (type ', infant_delivery_type_id, ')'), '', count(*) from ipt_labour_infant
+ where birth_date between %(d1)s and %(d2)s and infant_delivery_type_id in %(bba)s group by infant_delivery_type_id""",
+                    {"d1": d1, "d2": d2, "ap": cfg.asphyxia_apgar, "bba": tuple(cfg.bba_types)})
+    codes = tuple(cfg.dx_htn) + tuple(cfg.dx_gdm) + tuple(cfg.dx_pph) + tuple(cfg.dx_preterm)
+    dx = fetch("""
+select left(icd10, 3) code, '' name, count(*) n from iptdiag y join ipt on ipt.an = y.an
+ where ipt.dchdate between %(d1)s and %(d2)s and (left(icd10, 3) in %(c)s or left(icd10, 4) in %(c)s)
+ group by left(icd10, 3)""", {"d1": d1, "d2": d2, "c": codes})
+    found = _found(infants) + sorted(_found(dx), key=lambda f: f["code"])
+    return _item("outcome_codes", "ผลลัพธ์แม่และทารก: Apgar / BBA / Dx ภาวะแทรกซ้อน (IPD)",
+                 f"Apgar1 < {cfg.asphyxia_apgar} · BBA {', '.join(cfg.bba_types)} · Dx {', '.join(codes)}", found, "ok",
+                 "ANC_ASPHYXIA_APGAR · ANC_BBA_TYPES · ANC_DX_HTN · ANC_DX_GDM · ANC_DX_PPH · ANC_DX_PRETERM",
+                 "ผ่าตัดคลอดไม่ได้แสดง (ไม่พบรหัส O82 / หัตถการ 74.x ในข้อมูล) · GA คลอดคำนวณจาก LMP ใน person_anc")
+
+
 def _dchstts(d1, d2, cfg):
     rows = fetch("""
 select infant_dchstts code, count(*) n from ipt_labour_infant
@@ -257,6 +277,7 @@ def audit(d1, d2, cfg, pcu_map):
         _guard("quality_codes", "ฝากครรภ์คุณภาพ: lab / หัตถการ / Dx", "ANC_CBC_LAB_CODES · ANC_DM_LAB_CODES",
                lambda: _quality_codes(d1, d2, cfg)),
         _guard("thal_codes", "คัดกรองธาลัสซีเมีย", "ANC_THAL_EXPORT_CODES", lambda: _thal(d1, d2, cfg)),
+        _guard("outcome_codes", "ผลลัพธ์แม่และทารก", "ANC_ASPHYXIA_APGAR", lambda: _outcome_codes(d1, d2, cfg)),
         _pcu_item(new, pcu_map, cfg),
     ]
     return {"items": items, "completeness": completeness(pregs, infants, d1, d2, pcu_map, cfg),

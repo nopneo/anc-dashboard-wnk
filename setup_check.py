@@ -29,7 +29,7 @@ TABLES = ["person_anc", "person_anc_service", "person_anc_other_precare", "perso
           "patient", "village", "ovst", "ovst_vaccine", "person_vaccine", "dtmain", "ipt_labour",
           "ipt_labour_infant", "ipt_newborn", "ipt", "referout", "hospcode", "icd101", "service_time",
           "person_anc_preg_care", "opitemrece", "drugitems", "lab_head", "lab_order", "lab_items",
-          "doctor_operation", "ovstdiag", "thalassaemia_result"]
+          "doctor_operation", "ovstdiag", "thalassaemia_result", "person_anc_risk", "anc_risk", "iptdiag"]
 #: สิทธิ์ที่บัญชีอ่านอย่างเดียวมีได้
 SAFE_PRIVS = {"SELECT", "USAGE", "SHOW VIEW"}
 #: visit ANC ล่าสุดเก่ากว่านี้ (วัน) → เตือน (ฐานข้อมูลไม่ใช่ตัวจริง / replica ไม่อัปเดต)

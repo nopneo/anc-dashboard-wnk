@@ -85,7 +85,8 @@ def test_infants_alive_and_village(fake_fetch):
                        {"birth_date": "2026-02-02", "weight": "0", "dead": "Y", "chwpart": None,
                         "amppart": None, "tmbpart": None, "moopart": None}]
     i = queries.infants(D1, D2)
-    assert i[0] == {"birth_date": date(2026, 2, 1), "weight": 2400, "alive": True, "village": "30250211"}
+    assert i[0] == {"birth_date": date(2026, 2, 1), "weight": 2400, "alive": True, "village": "30250211",
+                    "apgar1": None, "asphyxia": False, "delivery_type": None}
     assert i[1]["alive"] is False and i[1]["weight"] is None
 
 
@@ -180,3 +181,34 @@ def test_pregnancy_area_fields(fake_fetch):
     assert r["thai"] is False and r["labour_hospcode"] == "10894"
     assert queries.pregnancies(D1, D2, load_config({"ANC_HCT_LAB_IDS": "6", "ANC_CBC_LAB_CODES": "1",
                                "ANC_DM_LAB_CODES": "2", "ANC_THAI_NATIONALITY": "48"}))[-1]["thai"] is True
+
+
+# ---------- ผลลัพธ์แม่และทารก ----------
+
+def test_pregnancy_outcome_fields(fake_fetch):
+    fake_fetch.rows = [{"anc_id": "1", "hn": "1", "age": "25", "chwpart": None, "amppart": None, "tmbpart": None,
+                        "moopart": None, "register_date": "2026-01-05", "lmp": None, "labor_date": None,
+                        "hct_lab": None, "hct_anc": None, "has_dt": "0", "has_dental": "0", "has_risk": "1",
+                        "cx_htn": "1", "cx_gdm": "0", "cx_pph": "0", "cx_preterm": "1", "death_date": "2026-03-01",
+                        "labour_place": "รพ.มทส."}]
+    cfg = load_config({"ANC_HCT_LAB_IDS": "6", "ANC_CBC_LAB_CODES": "1", "ANC_DM_LAB_CODES": "2"})
+    r = queries.pregnancies(D1, D2, cfg)[-1]
+    assert (r["has_risk"], r["cx_htn"], r["cx_gdm"], r["cx_preterm"]) == (True, True, False, True)
+    assert r["death_date"] == date(2026, 3, 1) and r["labour_place"] == "รพ.มทส."
+    sql, args = fake_fetch.calls[-1]
+    assert args["htn"] == CFG.dx_htn and args["pph"] == ("O72",) and "O72" not in sql and "iptdiag" in sql
+
+
+def test_infant_outcome_fields(fake_fetch):
+    fake_fetch.rows = [{"birth_date": "2026-02-01", "weight": "2900", "dead": "N", "dchstts": "05", "chwpart": None,
+                        "amppart": None, "tmbpart": None, "moopart": None, "apgar1": "6", "asphyxia": "Y",
+                        "delivery_type": "3"}]
+    i = queries.infants(D1, D2)[0]
+    assert (i["apgar1"], i["asphyxia"], i["delivery_type"]) == (6, True, "3")
+
+
+def test_risk_types(fake_fetch):
+    fake_fetch.rows = [{"name": "เคยผ่าคลอด", "n": "4"}]
+    assert queries.risk_types(D1, D2) == [{"name": "เคยผ่าคลอด", "n": 4}]
+    sql, args = fake_fetch.calls[-1]
+    assert "person_anc_classifying" in sql and args == {"d1": D1, "d2": D2}

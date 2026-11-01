@@ -22,7 +22,7 @@ IND_KEYS = ("new", "visits", "per_month", "early12", "visit5", "postnatal", "qua
             "dt", "dental", "anemia", "lbw", "wait")
 AGE_GROUPS = ("teen", "repro", "elder")
 #: ตัวชี้วัดที่ค่ายิ่งต่ำยิ่งดี
-LOWER_BETTER = {"anemia", "lbw"}
+LOWER_BETTER = {"anemia", "lbw", "asphyxia"}
 LOW_BASE = 5
 #: ครรภ์ที่ไม่ปิดในทะเบียนเกินนี้ (นับจาก LMP) ไม่ถือว่ากำลังตั้งครรภ์
 MAX_PREG_DAYS = 44 * 7
@@ -429,8 +429,17 @@ _ACTIONS = {"early12": "ค้นหาหญิงตั้งครรภ์�
             "anemia": "ติดตามยาเสริมธาตุเหล็กและตรวจ Hct ซ้ำ", "lbw": "ทบทวนรายที่คลอดน้ำหนักน้อย"}
 
 
-def alerts(ind, pcu_rows, age, unmapped):
+def alerts(ind, pcu_rows, age, unmapped, outcome=None):
     out = []
+    if outcome:
+        if outcome.get("maternal_death"):
+            out.append({"level": "red", "text": f"มารดาเสียชีวิต {outcome['maternal_death']} ราย",
+                        "owner": "งานแม่และเด็ก / ทีมนำทางคลินิก", "action": "ทบทวนกรณีเสียชีวิต (Dead case conference)"})
+        a = outcome.get("asphyxia") or {}
+        if a.get("ok") is False:
+            out.append({"level": "red", "text": f"ทารกแรกเกิดขาดออกซิเจน {a['value']} ต่อ 1,000 เกิดมีชีพ "
+                                                f"(เป้า ≤ {a['target']})",
+                        "owner": "ห้องคลอด", "action": "ทบทวนการเฝ้าระวังระหว่างคลอดและการกู้ชีพทารกแรกเกิด"})
     for key, label in IND_LABELS.items():
         r = ind.get(key) or {}
         if r.get("ok") is False:
@@ -468,3 +477,58 @@ def monthly_trend(pregs, visits, d1, d2):
         if not v.get("precare") and _in(v.get("date"), d1, d2):
             rows[v["date"].strftime("%Y-%m")]["visits"] += 1
     return list(rows.values())
+
+
+# ---------- ผลลัพธ์แม่และทารก ----------
+
+#: ภาวะแทรกซ้อน (คีย์ใน Pregnancy, ชื่อ) — Dx ระหว่าง LMP ถึงหลังคลอด 42 วัน
+COMPLICATIONS = (("cx_htn", "ความดันโลหิตสูง / ครรภ์เป็นพิษ"), ("cx_gdm", "เบาหวานขณะตั้งครรภ์"),
+                 ("cx_preterm", "เจ็บครรภ์คลอดก่อนกำหนด"), ("cx_pph", "ตกเลือดหลังคลอด"))
+PRETERM_DAYS = 37 * 7
+
+
+def outcomes(pregs, infants, risk_types, d1, d2, cfg, area=None):
+    """ผลลัพธ์ในช่วง: ครรภ์เสี่ยง (ในรายใหม่) · ผลที่ใช้ครรภ์ที่คลอดเป็นฐาน (ตาม area) · ทารกเกิดใน รพ.
+
+    risk_types = [{"name", "n"}] ประเภทความเสี่ยงของครรภ์รายใหม่ (queries.risk_types)
+    """
+    new = [p for p in pregs if _in(p.get("register_date"), d1, d2)]
+    delivered = _delivered(pregs, d1, d2, area)
+    dated = [p for p in delivered if p.get("lmp")]
+    preterm = _rate("preterm", sum(1 for p in dated if (p["labor_date"] - p["lmp"]).days < PRETERM_DAYS), len(dated), cfg)
+
+    born = [i for i in infants if _in(i.get("birth_date"), d1, d2)]
+    live = [i for i in born if i.get("alive")]
+    asph = sum(1 for i in live if i.get("asphyxia") or (i.get("apgar1") is not None and i["apgar1"] < cfg.asphyxia_apgar))
+    per1000 = round(asph * 1000 / len(live), 1) if live else None
+    target = cfg.targets.get("asphyxia")
+    asphyxia = {"num": asph, "den": len(live), "value": per1000, "target": target,
+                "ok": None if per1000 is None or target is None else per1000 <= target,
+                "low_base": 0 < len(live) < LOW_BASE}
+
+    here = [p for p in delivered if p.get("labour_hospcode") == cfg.hospcode]
+    places = {}
+    for p in delivered:
+        code = p.get("labour_hospcode")
+        if code and code != cfg.hospcode:
+            places.setdefault(code, {"code": code, "name": p.get("labour_place") or code, "n": 0})["n"] += 1
+
+    def died_in_window(p):
+        dd, lab = p.get("death_date"), p.get("labor_date")
+        start = p.get("lmp") or p.get("register_date")
+        end = lab + timedelta(days=cfg.postpartum_days) if lab else None
+        return bool(dd and start and start <= dd and (end is None or dd <= end) and _in(dd, d1, d2))
+
+    return {
+        "risk": _rate("risk", sum(1 for p in new if p.get("has_risk")), len(new), cfg),
+        "risk_types": sorted(risk_types, key=lambda r: -r["n"])[:5],
+        "preterm": preterm,
+        "asphyxia": asphyxia,
+        "place": {"here": len(here), "den": len(delivered), "pct_here": pct(len(here), len(delivered)),
+                  "top": sorted(places.values(), key=lambda x: (-x["n"], x["code"]))[:5]},
+        "bba": sum(1 for i in born if str(i.get("delivery_type") or "") in cfg.bba_types),
+        "stillbirth": sum(1 for i in born if not i.get("alive")),
+        "maternal_death": sum(1 for p in pregs if died_in_window(p)),
+        "complications": [{"key": k, "label": label, **_rate(k, sum(1 for p in delivered if p.get(k)), len(delivered), cfg)}
+                          for k, label in COMPLICATIONS],
+    }

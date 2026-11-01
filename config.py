@@ -24,7 +24,9 @@ _TIME_COL = re.compile(r"vsttime|service([1-9]|1[0-9]|20)")
 #: เป้าหมายตัวชี้วัด (%) · anemia และ lbw ยิ่งต่ำยิ่งดี
 TARGET_DEFAULTS = {"early12": 75, "visit5": 75, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7,
                    # เอกสาร KPI: หลังคลอด 3 ครั้ง ≥75 · ฝากครรภ์คุณภาพ (HDC) ปีงบ 2570 ≥70 · ไอโอดีนไม่กำหนดเป้า
-                   "postnatal": 75, "quality": 70, "iodine": None}
+                   "postnatal": 75, "quality": 70, "iodine": None,
+                   # ทารกแรกเกิดขาดออกซิเจน ไม่เกิน 25 ต่อ 1,000 เกิดมีชีพ (ตัวชี้วัดกระทรวง)
+                   "asphyxia": 25}
 
 #: ยาเม็ดที่มีไอโอดีน (รหัสยา 24 หลัก DIDSTD ตามเอกสาร KPI: Triferdine 150, Obimin-az, Iodine GPO,
 #: Nataral, Nataral EF, Prenamed, Iolic)
@@ -57,6 +59,14 @@ class Config:
     dm_dx: tuple = ("Z131",)
     #: thalassaemia_result.thalassaemia_result_export ที่นับว่าคัดกรองแล้ว (PRENATAL.THALASSEMIA 1, 2, 4)
     thal_export_codes: tuple = ("1", "2", "4")
+    #: ผลลัพธ์แม่และทารก: Apgar 1 นาทีต่ำกว่านี้ = ขาดออกซิเจน · infant_delivery_type ที่เป็นคลอดก่อนถึง รพ. (BBA)
+    asphyxia_apgar: int = 7
+    bba_types: tuple = ("3",)
+    #: Dx ภาวะแทรกซ้อนระหว่างตั้งครรภ์ถึงหลังคลอด 42 วัน (รหัส 3 หรือ 4 หลัก ไม่มีจุด)
+    dx_htn: tuple = ("O10", "O11", "O13", "O14", "O15", "O16")
+    dx_gdm: tuple = ("O244",)
+    dx_pph: tuple = ("O72",)
+    dx_preterm: tuple = ("O60",)
     postpartum_days: int = 42
     refer_dx_prefixes: tuple = ("O", "Z32", "Z33", "Z34", "Z35", "Z36")
     wait_from_col: str = "vsttime"
@@ -77,6 +87,10 @@ class Config:
 
 def _list(v):
     return tuple(x.strip() for x in (v or "").split(",") if x.strip())
+
+
+def _dx(v):
+    return tuple(x.replace(".", "").upper() for x in _list(v))
 
 
 def _num(v, default):
@@ -110,6 +124,12 @@ def load_config(env=os.environ):
         down_dx=tuple(x.replace(".", "").upper() for x in _list(g("ANC_DOWN_DX"))) or d.down_dx,
         dm_dx=tuple(x.replace(".", "").upper() for x in _list(g("ANC_DM_DX"))) or d.dm_dx,
         thal_export_codes=_list(g("ANC_THAL_EXPORT_CODES")) or d.thal_export_codes,
+        asphyxia_apgar=int(_num(g("ANC_ASPHYXIA_APGAR"), d.asphyxia_apgar)),
+        bba_types=_list(g("ANC_BBA_TYPES")) or d.bba_types,
+        dx_htn=_dx(g("ANC_DX_HTN")) or d.dx_htn,
+        dx_gdm=_dx(g("ANC_DX_GDM")) or d.dx_gdm,
+        dx_pph=_dx(g("ANC_DX_PPH")) or d.dx_pph,
+        dx_preterm=_dx(g("ANC_DX_PRETERM")) or d.dx_preterm,
         postpartum_days=int(_num(g("ANC_POSTPARTUM_DAYS"), d.postpartum_days)),
         refer_dx_prefixes=tuple(x.upper() for x in _list(g("ANC_REFER_DX_PREFIXES"))) or d.refer_dx_prefixes,
         wait_from_col=_col(g("ANC_WAIT_FROM_COL"), d.wait_from_col),
