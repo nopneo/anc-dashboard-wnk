@@ -131,7 +131,7 @@ def visits(anc_ids):
 
 
 INFANTS = """
-select i.birth_date, i.birth_weight weight, coalesce(n.dead, 'N') dead,
+select i.birth_date, i.birth_weight weight, coalesce(n.dead, 'N') dead, i.infant_dchstts dchstts,
        pt.chwpart, pt.amppart, pt.tmbpart, pt.moopart
   from ipt_labour_infant i
   join ipt_labour il on il.ipt_labour_id = i.ipt_labour_id
@@ -142,10 +142,14 @@ select i.birth_date, i.birth_weight weight, coalesce(n.dead, 'N') dead,
 """
 
 
-def infants(d1, d2):
+def infants(d1, d2, dead_dchstts=("08", "09")):
+    """ทารกเกิดใน รพ. · ตาย = ipt_newborn.dead='Y' หรือสถานะจำหน่ายทารกเป็นรหัสตาย (ANC_DEAD_DCHSTTS)
+    — ipt_newborn มีเฉพาะทารกที่ได้ AN จึงใช้ infant_dchstts จับรายตายคลอดด้วย"""
+    dead = tuple(dead_dchstts)
     return [{"birth_date": _date(r.get("birth_date")), "weight": _int_or_none(r.get("weight")) or None,
-             "alive": str(r.get("dead") or "N").upper() != "Y", "village": _village(r)}
-            for r in fetch(INFANTS, {"d1": d1, "d2": d2})]
+             "alive": str(r.get("dead") or "N").upper() != "Y" and str(r.get("dchstts") or "").strip() not in dead,
+             "village": _village(r)}
+            for r in fetch(INFANTS, {"d1": d1, "d2": d2, "dead": dead})]
 
 
 def waits(d1, d2, cfg):

@@ -28,7 +28,7 @@ def client(monkeypatch, tmp_path):
 def _patch(monkeypatch, pregs=(), visits=(), infants=(), waits=(), refers=()):
     monkeypatch.setattr(queries, "pregnancies", lambda d1, d2, cfg: list(pregs))
     monkeypatch.setattr(queries, "visits", lambda ids: list(visits))
-    monkeypatch.setattr(queries, "infants", lambda d1, d2: list(infants))
+    monkeypatch.setattr(queries, "infants", lambda d1, d2, *a: list(infants))
     monkeypatch.setattr(queries, "waits", lambda d1, d2, cfg: list(waits))
     monkeypatch.setattr(queries, "refers", lambda d1, d2: list(refers))
 
@@ -153,3 +153,23 @@ def test_refer_table_not_clipped_in_print(client, fake_data):
     """ไฟล์ส่งออก (?print=1) ต้องเห็นตาราง refer ครบ ไม่ใช่กรอบเลื่อน"""
     assert "scroll-y" in _html(client)
     assert "scroll-y" not in _html(client, "/?d1=2026-01-01&d2=2026-06-30&print=1")
+
+
+# ---------- final review fixes ----------
+
+def test_main_failure_shows_error_not_zeros(client, fake_data, monkeypatch):
+    def boom(d1, d2, cfg):
+        raise RuntimeError("Unknown column")
+    monkeypatch.setattr(queries, "pregnancies", boom)
+    html = _html(client)
+    assert "setup_check.py" in html and "ANC KPI Summary" not in html and "Unknown column" not in html
+
+
+def test_refer_failure_shows_dash_not_zero(client, fake_data, monkeypatch):
+    def boom(d1, d2):
+        raise TimeoutError()
+    monkeypatch.setattr(queries, "refers", boom)
+    html = _html(client)
+    assert "ไม่มี refer ในช่วงนี้" not in html
+    assert html.count("ดึงข้อมูลไม่ได้") >= 4          # ส่วน 6, 7, 8, 9
+    assert '<div class="v">—</div><div class="u">ครั้ง</div>' in html

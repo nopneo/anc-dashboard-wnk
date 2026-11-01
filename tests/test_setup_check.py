@@ -94,3 +94,12 @@ def test_audit_findings_are_warnings_not_failures(monkeypatch):
     rows = setup_check.run(fetch=fake(), audit=True)
     audit = [r for r in rows if r[1].startswith(("Data Audit", "ความครบ"))]
     assert [r[0] for r in audit] == ["warn", "warn"] and not any("จับคู่" in r[1] for r in audit)
+
+
+def test_main_query_failure_stays_bad(monkeypatch):
+    import check
+    monkeypatch.setattr(check, "audit", lambda d1, d2, cfg, m: {
+        "items": [{"key": "main_query", "title": "ดึงทะเบียนครรภ์", "status": "bad", "hint": "x"}],
+        "completeness": [], "n_pregs": 0})
+    rows = setup_check.run(fetch=fake(), audit=True)
+    assert any(r[0] == "bad" and "ดึงทะเบียนครรภ์" in r[1] for r in rows)

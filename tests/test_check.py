@@ -38,7 +38,7 @@ def _preg(i, village="30250101", labor=date(2026, 3, 1), lmp=date(2025, 6, 1), h
 @pytest.fixture
 def data(monkeypatch):
     monkeypatch.setattr(queries, "pregnancies", lambda d1, d2, cfg: [_preg(1), _preg(2, "11111111"), _preg(3, None)])
-    monkeypatch.setattr(queries, "infants", lambda d1, d2: [{"birth_date": D1, "weight": 3000, "alive": True,
+    monkeypatch.setattr(queries, "infants", lambda d1, d2, *a: [{"birth_date": D1, "weight": 3000, "alive": True,
                                                              "village": None}])
     monkeypatch.setattr(queries, "refers", lambda d1, d2: [])
     monkeypatch.setattr(queries, "hct_lab_ids", lambda cfg: (6, 7))
@@ -152,3 +152,17 @@ def test_template_csv_has_no_person_columns(client):
 
 def test_template_csv_lan_only(client):
     assert client.get("/check/pcu_map_template.csv", environ_base={"REMOTE_ADDR": "8.8.8.8"}).status_code == 403
+
+
+def test_audit_leap_day_start(monkeypatch, data):
+    monkeypatch.setattr(check, "fetch", Router({}))
+    check.audit(date(2028, 2, 29), date(2028, 3, 31), CFG, None)       # ต้องไม่ ValueError
+
+
+def test_audit_reports_main_query_failure(monkeypatch, data):
+    def boom(d1, d2, cfg):
+        raise RuntimeError("Unknown column")
+    monkeypatch.setattr(queries, "pregnancies", boom)
+    monkeypatch.setattr(check, "fetch", Router({}))
+    it = _item(check.audit(D1, D2, CFG, None), "main_query")
+    assert it["status"] == "bad" and "RuntimeError" in it["hint"]

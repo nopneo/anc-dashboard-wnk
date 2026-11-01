@@ -66,11 +66,20 @@
     </div>
   </div>
 
+  {% if d.errors.get('main') %}
+  <section class="block">
+    <header><span class="no">!</span><span class="t">ดึงข้อมูลงานฝากครรภ์ไม่ได้</span></header>
+    <div class="err">⚠ {{ d.errors['main'] }} — จึงไม่แสดงตัวเลข (ไม่ใช่ว่าไม่มีผู้รับบริการ)</div>
+    <p class="hint">ให้ผู้ดูแลระบบรัน <code>python setup_check.py</code> บนเครื่องที่ติดตั้งแอป
+      {% if check_allowed %}หรือเปิด <a href="{{ url_for('check_page') }}">หน้าตรวจข้อมูล</a>{% endif %}
+      เพื่อดูว่าฐานข้อมูล / ตาราง / คอลัมน์ของ HOSxP ข้อไหนไม่ตรง</p>
+  </section>
+  {% else %}
+  {% set rerr = d.errors.get('refer') %}
   <!-- ====================================================== 1. KPI -->
   <section class="block">
     <header><span class="no">1</span>
       <span><span class="t">ANC KPI Summary</span> <span class="st">ภาพรวมงานฝากครรภ์</span></span></header>
-    {{ sec_error('main') }}
     <div class="kpis">
       <div class="kpi g1"><div class="l">ฝากครรภ์รายใหม่<small>New ANC</small></div>
         <div class="v">{{ fmt(k.new.value) }}</div><div class="u">ราย · กำลังติดตาม {{ d.tracking.open }} ราย</div></div>
@@ -85,7 +94,7 @@
         <div class="v">{{ fmt(k.visit5.value) }}{{ '%' if k.visit5.value is not none }}</div>
         <div class="u">{{ k.visit5.num }}/{{ k.visit5.den }} ราย ที่คลอด</div><span class="tg">เป้า ≥ {{ k.visit5.target }}%</span></div>
       <div class="kpi g6"><div class="l">ส่งต่อ (Refer)<small>แม่และเด็ก</small></div>
-        <div class="v">{{ fmt(d.refer.total) }}</div><div class="u">ครั้ง</div></div>
+        <div class="v">{{ '—' if rerr else fmt(d.refer.total) }}</div><div class="u">ครั้ง</div></div>
       <div class="kpi g7"><div class="l">เวลารอคอยเฉลี่ย<small>นอก 43 แฟ้ม</small></div>
         <div class="v">{{ fmt(k.wait.value) }}</div><div class="u">นาที · {{ fmt(k.wait.den) }} visit</div></div>
     </div>
@@ -99,7 +108,6 @@
     {% set tr = d.trend %}
     {% if tr %}
     {% set top = ([1] + tr | map(attribute='visits') | list + tr | map(attribute='new') | list) | max %}
-    {% set rtop = ([1] + d.refer.monthly | map(attribute='teen') | list) | max %}
     {% set n = tr | length %}
     {% set w = 640 / n %}
     <div class="key"><span><i style="background:#F06292"></i>ครั้งบริการ ANC</span>
@@ -119,13 +127,17 @@
         <rect x="{{ x + w/2 + 1 }}" y="{{ 180 - hn }}" width="{{ bw }}" height="{{ hn }}" rx="3" fill="#880E4F"><title>{{ m.label }} · รายใหม่ {{ m.new }}</title></rect>
         {% if m.visits %}<text x="{{ x + w/2 - bw/2 - 1 }}" y="{{ 176 - hv }}" font-size="10" text-anchor="middle" fill="#C2185B">{{ m.visits }}</text>{% endif %}
         <text x="{{ x + w/2 }}" y="196" font-size="11" text-anchor="middle" fill="#9a7484">{{ m.label }}</text>
+        {% if not rerr %}
         {% set rm = d.refer.monthly[loop.index0] %}
         {% set rt = rm.teen + rm.repro + rm.elder + rm.unknown %}
         {% set ns.pts = ns.pts + [(x + w/2) | round(1) ~ ',' ~ (180 - 160 * rt / ([1, top] | max)) | round(1)] %}
         <text x="{{ x + w/2 }}" y="214" font-size="10" text-anchor="middle" fill="#F57C00">{{ rt }}</text>
+        {% endif %}
       {% endfor %}
+      {% if not rerr %}
       <polyline points="{{ ns.pts | join(' ') }}" fill="none" stroke="#F57C00" stroke-width="2.5"></polyline>
       <text x="676" y="214" font-size="10" text-anchor="end" fill="#F57C00">← refer/เดือน</text>
+      {% endif %}
     </svg>
     {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
   </section>
@@ -207,7 +219,7 @@
       <tr><td>{{ r.name }} {% if r.hospcode %}<span class="code">{{ r.hospcode }}</span>{% endif %}</td>
         <td class="n">{{ r.new }}</td><td class="n">{{ r.teen }}</td><td class="n">{{ r.repro }}</td><td class="n">{{ r.elder }}</td>
         <td class="n">{{ rate(r.early12) }}</td><td class="n">{{ rate(r.visit5) }}</td><td class="n">{{ rate(r.dt) }}</td>
-        <td class="n">{{ rate(r.anemia) }}</td><td class="n">{{ rate(r.lbw) }}</td><td class="n">{{ r.refer }}</td></tr>
+        <td class="n">{{ rate(r.anemia) }}</td><td class="n">{{ rate(r.lbw) }}</td><td class="n">{{ '—' if rerr else r.refer }}</td></tr>
       {% endfor %}
     </table>
     </div>
@@ -221,8 +233,8 @@
       <span><span class="t">Refer รายเดือน</span> <span class="st">แยกกลุ่มอายุ · ทะเบียนฝากครรภ์ถึงหลังคลอด {{ d.postpartum_days }} วัน + Dx O/Z32–Z36</span></span></header>
     {{ sec_error('refer') }}
     {% set rm = d.refer.monthly %}
-    {% if d.refer.total %}
-    {% set rtop = ([1] + rm | map(attribute='teen') | list) | max %}
+    {% if rerr %}
+    {% elif d.refer.total %}
     {% set ns = namespace(top=1) %}
     {% for m in rm %}{% set ns.top = [ns.top, m.teen + m.repro + m.elder + m.unknown] | max %}{% endfor %}
     {% set n = rm | length %}{% set w = 640 / n %}
@@ -250,7 +262,9 @@
   <section class="block">
     <header><span class="no">7</span>
       <span><span class="t">Top 10 Refer Diagnoses</span> <span class="st">Dx หลัก ICD-10 (3 หลัก) · {{ d.refer.total }} ครั้ง</span></span></header>
-    {% if d.refer.top_dx %}
+    {{ sec_error('refer') }}
+    {% if rerr %}
+    {% elif d.refer.top_dx %}
     {% set mx = d.refer.top_dx[0].n %}
     <ol class="hbars">
       {% for x in d.refer.top_dx %}
@@ -268,7 +282,9 @@
   <section class="block">
     <header><span class="no">8</span>
       <span><span class="t">Refer Destinations</span> <span class="st">โรงพยาบาลปลายทาง</span></span></header>
-    {% if d.refer.dest %}
+    {{ sec_error('refer') }}
+    {% if rerr %}
+    {% elif d.refer.dest %}
     {% set mx = d.refer.dest[0].n %}
     <ol class="hbars">
       {% for x in d.refer.dest[:10] %}
@@ -284,7 +300,9 @@
   <section class="block">
     <header><span class="no">9</span>
       <span><span class="t">สรุป Refer รายเดือน</span> <span class="st">เดือน × กลุ่ม Dx × ปลายทาง · เวลาจากรับบริการถึง refer</span></span></header>
-    {% if d.refer.table %}
+    {{ sec_error('refer') }}
+    {% if rerr %}
+    {% elif d.refer.table %}
     <div class="scroll{{ '' if print_mode else ' scroll-y' }}">
     <table class="t">
       <tr><th>เดือน</th><th>กลุ่ม Dx</th><th>ปลายทาง</th><th class="n">ครั้ง</th><th class="n">เวลาเฉลี่ย (นาที)</th></tr>
@@ -315,6 +333,8 @@
     </div>
     {% else %}<div class="empty">ไม่มีรายการที่ต้องติดตาม</div>{% endif %}
   </section>
+
+  {% endif %}
 
   <footer class="src">
     <b>แหล่งข้อมูล</b> — นิยามตามแฟ้ม 43 แฟ้ม ANC · PRENATAL · LABOR · NEWBORN · EPI · DENTAL · REFER_HISTORY

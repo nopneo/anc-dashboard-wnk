@@ -178,7 +178,7 @@ def build_context(d1, d2):
     def main():
         pregs = queries.pregnancies(d1, d2, cfg)
         visits = queries.visits([p["anc_id"] for p in pregs])
-        infants = queries.infants(d1, d2)
+        infants = queries.infants(d1, d2, cfg.dead_dchstts)
         waits = queries.waits(d1, d2, cfg)
         return pregs, visits, infants, waits
 

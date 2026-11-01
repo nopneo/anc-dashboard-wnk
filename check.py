@@ -5,6 +5,8 @@
 แสดงเฉพาะจำนวนนับและชื่อรหัส ไม่มีข้อมูลรายคน
 """
 
+from datetime import timedelta
+
 import metrics
 import queries
 from db import fetch, num
@@ -158,7 +160,7 @@ def _comp(title, n, den, warn=95.0, bad=80.0):
 
 def completeness(pregs, infants, d1, d2, pcu_map):
     new = [p for p in pregs if p.get("register_date") and d1 <= p["register_date"] <= d2]
-    due = [p for p in pregs if p.get("lmp") and (d2 - p["lmp"]).days >= 42 * 7 and p["lmp"] >= d1.replace(year=d1.year - 1)]
+    due = [p for p in pregs if p.get("lmp") and (d2 - p["lmp"]).days >= 42 * 7 and p["lmp"] >= d1 - timedelta(days=365)]
     delivered = [p for p in pregs if p.get("labor_date") and d1 <= p["labor_date"] <= d2]
     born = [i for i in infants if i.get("birth_date") and d1 <= i["birth_date"] <= d2]
     out = [_comp("ครรภ์ที่มี LMP", sum(1 for p in new if p.get("lmp")), len(new)),
@@ -171,14 +173,26 @@ def completeness(pregs, infants, d1, d2, pcu_map):
     return out
 
 
+def _dchstts(d1, d2, cfg):
+    rows = fetch("""
+select infant_dchstts code, count(*) n from ipt_labour_infant
+ where birth_date between %(d1)s and %(d2)s group by infant_dchstts""", {"d1": d1, "d2": d2})
+    return _item("dead_dchstts", "สถานะจำหน่ายทารก — รหัสที่นับเป็นเสียชีวิต (ตัดออกจากตัวหาร LBW)",
+                 ", ".join(cfg.dead_dchstts), _found(rows), "ok", "ANC_DEAD_DCHSTTS",
+                 "ทารกตายคลอดต้องไม่อยู่ในตัวหาร LBW — ตรวจว่ารหัสเสียชีวิตของ รพ. ตรงกับค่าที่ตั้ง")
+
+
 def audit(d1, d2, cfg, pcu_map):
+    main_err = None
     try:
         pregs = queries.pregnancies(d1, d2, cfg)
-        infants = queries.infants(d1, d2)
-    except Exception:
-        pregs, infants = [], []
+        infants = queries.infants(d1, d2, cfg.dead_dchstts)
+    except Exception as e:
+        pregs, infants, main_err = [], [], type(e).__name__
     new = [p for p in pregs if p.get("register_date") and d1 <= p["register_date"] <= d2]
-    items = [
+    items = [_item("main_query", "ดึงทะเบียนครรภ์ / ทารก (คิวรีหลักของแดชบอร์ด)", "queries.pregnancies · infants", [],
+                   "bad", "", f"ล้ม ({main_err}) — ตารางหรือคอลัมน์ของ HOSxP รุ่นนี้ไม่ตรง ทั้งแดชบอร์ดจะไม่มีตัวเลข")]         if main_err else []
+    items += [
         _guard("dt_codes", "วัคซีน dT หญิงตั้งครรภ์", "ANC_DT_VACCINE_CODES", lambda: _dt(d1, d2, cfg)),
         _guard("hct_lab_ids", "ผล Hct ของ ANC", "ANC_HCT_LAB_IDS", lambda: _hct(d1, d2, cfg)),
         _guard("anc_service_type", "ประเภทบริการ ANC", "", lambda: _service_types(d1, d2)),
@@ -186,6 +200,7 @@ def audit(d1, d2, cfg, pcu_map):
         _guard("refer_dx", "refer ที่นับเป็นงานแม่และเด็ก", "ANC_REFER_DX_PREFIXES",
                lambda: _refer_dx(d1, d2, cfg, pregs)),
         _guard("wait_cols", "เวลารอคอย", "ANC_WAIT_FROM_COL · ANC_WAIT_TO_COL", lambda: _wait_cols(d1, d2, cfg)),
+        _guard("dead_dchstts", "สถานะจำหน่ายทารก", "ANC_DEAD_DCHSTTS", lambda: _dchstts(d1, d2, cfg)),
         _pcu_item(new, pcu_map),
     ]
     return {"items": items, "completeness": completeness(pregs, infants, d1, d2, pcu_map),

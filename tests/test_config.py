@@ -53,3 +53,14 @@ def test_village_code():
     assert village_code("30", "25", "1", "3") == "30250103"
     assert village_code("30", "25", None, "3") is None
     assert village_code("30", "25", "01", "") is None
+
+
+def test_pcu_map_non_utf8_is_pcu_error(tmp_path):
+    p = tmp_path / "m.csv"
+    p.write_bytes("village_code,pcu_hospcode,pcu_name\n30250101,03929,รพ.สต.ก\n".encode("cp874"))
+    with pytest.raises(PcuMapError, match="UTF-8"):
+        load_pcu_map(str(p))
+
+
+def test_dead_dchstts_default():
+    assert load_config({}).dead_dchstts == ("08", "09")

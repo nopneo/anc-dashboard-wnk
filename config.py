@@ -38,6 +38,7 @@ class Config:
     hct_cutoff: float = 33
     hct_late_ga: int = 28
     lbw_grams: int = 2500
+    dead_dchstts: tuple = ("08", "09")
     postpartum_days: int = 42
     refer_dx_prefixes: tuple = ("O", "Z32", "Z33", "Z34", "Z35", "Z36")
     wait_from_col: str = "vsttime"
@@ -76,6 +77,7 @@ def load_config(env=os.environ):
         hct_cutoff=_num(g("ANC_HCT_CUTOFF"), d.hct_cutoff),
         hct_late_ga=int(_num(g("ANC_HCT_LATE_GA"), d.hct_late_ga)),
         lbw_grams=int(_num(g("ANC_LBW_GRAMS"), d.lbw_grams)),
+        dead_dchstts=_list(g("ANC_DEAD_DCHSTTS")) or d.dead_dchstts,
         postpartum_days=int(_num(g("ANC_POSTPARTUM_DAYS"), d.postpartum_days)),
         refer_dx_prefixes=tuple(x.upper() for x in _list(g("ANC_REFER_DX_PREFIXES"))) or d.refer_dx_prefixes,
         wait_from_col=_col(g("ANC_WAIT_FROM_COL"), d.wait_from_col),
@@ -105,17 +107,20 @@ def load_pcu_map(path):
     if not os.path.exists(path):
         return None
     out = {}
-    with open(path, encoding="utf-8-sig", newline="") as f:
-        rows = csv.reader(f)
-        header = [h.strip() for h in next(rows, [])]
-        if header[:3] != PCU_HEADER:
-            raise PcuMapError(f"หัวตารางต้องเป็น {','.join(PCU_HEADER)} (พบ {','.join(header)})")
-        for n, row in enumerate(rows, start=2):
-            row = [c.strip() for c in row] + ["", "", ""]
-            code, hcode, name = row[:3]
-            if not code and not hcode:
-                continue
-            if not code.isdigit() or len(code) not in (7, 8):
-                raise PcuMapError(f"บรรทัด {n}: village_code '{code}' ต้องเป็นตัวเลข 8 หลัก")
-            out[code.zfill(8)] = (hcode, name)
+    try:
+        text = open(path, encoding="utf-8-sig", newline="").read()
+    except UnicodeDecodeError:
+        raise PcuMapError("ไฟล์ไม่ใช่ UTF-8 — ใน Excel ให้บันทึกเป็น \"CSV UTF-8 (Comma delimited)\"") from None
+    rows = csv.reader(text.splitlines())
+    header = [h.strip() for h in next(rows, [])]
+    if header[:3] != PCU_HEADER:
+        raise PcuMapError(f"หัวตารางต้องเป็น {','.join(PCU_HEADER)} (พบ {','.join(header)})")
+    for n, row in enumerate(rows, start=2):
+        row = [c.strip() for c in row] + ["", "", ""]
+        code, hcode, name = row[:3]
+        if not code and not hcode:
+            continue
+        if not code.isdigit() or len(code) not in (7, 8):
+            raise PcuMapError(f"บรรทัด {n}: village_code '{code}' ต้องเป็นตัวเลข 8 หลัก")
+        out[code.zfill(8)] = (hcode, name)
     return out

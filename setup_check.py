@@ -151,7 +151,7 @@ def _audit(days, cfg):
         return [("bad", "Data Audit", f"ตรวจไม่สำเร็จ: {type(e).__name__}")]
     # ปัญหาข้อมูลเป็น ⚠ (รายละเอียดและวิธีแก้อยู่ที่หน้า /check) · pcu_map ตรวจแล้วในข้อไฟล์ด้านบน
     soft = lambda s: "warn" if s == "bad" else s
-    out = [(soft(i["status"]), f"Data Audit: {i['title']}", i["hint"]) for i in a["items"] if i["key"] != "pcu_map"]
+    out = [(i["status"] if i["key"] == "main_query" else soft(i["status"]), f"Data Audit: {i['title']}", i["hint"]) for i in a["items"] if i["key"] != "pcu_map"]
     out += [(soft(x["status"]), f"ความครบ: {x['title']}", f"{x['pct']}% ({x['n']}/{x['den']})")
             for x in a["completeness"]]
     return out

@@ -123,3 +123,11 @@ def test_refers_normalizes_9_digit_dest_codes(fake_fetch):
     queries.refers(D1, D2)
     sql, _ = fake_fetch.calls[-1]
     assert "hospcode_5_digit" in sql
+
+
+def test_infants_dead_by_discharge_status(fake_fetch):
+    fake_fetch.rows = [{"birth_date": "2026-02-01", "weight": "1800", "dead": "N", "dchstts": "09",
+                        "chwpart": None, "amppart": None, "tmbpart": None, "moopart": None}]
+    assert queries.infants(D1, D2)[0]["alive"] is False
+    sql, args = fake_fetch.calls[-1]
+    assert "infant_dchstts" in sql and args["dead"] == ("08", "09")
