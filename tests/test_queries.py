@@ -116,3 +116,10 @@ def test_pregnancy_links_patient_by_cid_when_hn_missing(fake_fetch):
     queries.pregnancies(D1, D2, load_config({"ANC_HCT_LAB_IDS": "6"}))
     sql, _ = fake_fetch.calls[-1]
     assert "p2.cid = pe.cid" in " ".join(sql.split())
+
+
+def test_refers_normalizes_9_digit_dest_codes(fake_fetch):
+    """รหัส 9 หลัก (EA0010666) กับ 5 หลัก (10666) ของ รพ. เดียวกัน ต้องรวมเป็นปลายทางเดียว"""
+    queries.refers(D1, D2)
+    sql, _ = fake_fetch.calls[-1]
+    assert "hospcode_5_digit" in sql

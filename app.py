@@ -4,13 +4,17 @@
 production:  gunicorn -b 0.0.0.0:6300 app:app   (ออกผ่าน sub-path เช่น /anc/)
 """
 
+import csv
+import io
+import ipaddress
 import json
 import os
 import re
 from datetime import date, datetime, timedelta
 
-from flask import Flask, render_template, request, url_for
+from flask import Flask, Response, render_template, request, url_for
 
+import check
 import db
 import metrics
 import queries
@@ -195,6 +199,72 @@ def build_context(d1, d2):
     return ctx
 
 
+# ---------------------------------------------------------------- LAN / proxy
+
+TRUSTED_PROXIES = {x.strip() for x in os.getenv("ANC_TRUSTED_PROXIES", "127.0.0.1,::1").split(",") if x.strip()}
+_CF_DEFAULT = ("173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,"
+               "190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,"
+               "104.24.0.0/14,172.64.0.0/13,131.0.72.0/22,2400:cb00::/32,2606:4700::/32,2803:f800::/32,"
+               "2405:b500::/32,2405:8100::/32,2a06:98c0::/29,2c0f:f248::/32")
+
+
+def _nets(spec):
+    out = []
+    for x in spec.split(","):
+        try:
+            out.append(ipaddress.ip_network(x.strip(), strict=False))
+        except ValueError:
+            pass
+    return out
+
+
+CF_NETS = _nets(os.getenv("ANC_CF_RANGES", _CF_DEFAULT))
+#: เครือข่ายเพิ่มเติมที่นับเป็น "ใน รพ." (เช่น IP สาธารณะของ รพ. เมื่อเข้าผ่าน Cloudflare)
+LAN_NETS = _nets(os.getenv("ANC_LAN_NETS", ""))
+
+
+def _is_cf(ip):
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(a in n for n in CF_NETS)
+
+
+def _client_ip():
+    """IP ผู้ใช้: ค่าท้ายสุดของ X-Forwarded-For (Apache ต่อท้ายเอง ปลอมไม่ได้) · ผ่าน Cloudflare จริงจึงเชื่อ CF-Connecting-IP"""
+    peer = request.remote_addr
+    if peer not in TRUSTED_PROXIES:
+        return peer
+    xff = [x.strip() for x in request.headers.get("X-Forwarded-For", "").split(",") if x.strip()]
+    hop = xff[-1] if xff else peer
+    cf = request.headers.get("CF-Connecting-IP", "").strip()
+    return cf if cf and _is_cf(hop) else hop
+
+
+def _from_lan():
+    """คำขอมาจากเครื่องใน รพ. หรือไม่ (แบบเดียวกับ er_dashboard) — ผ่าน Cloudflare นับเฉพาะ IP ใน ANC_LAN_NETS"""
+    try:
+        ip = ipaddress.ip_address((_client_ip() or "").strip())
+    except ValueError:
+        return False
+    if any(ip in n for n in LAN_NETS):
+        return True
+    if request.headers.get("CF-Connecting-IP", "").strip():
+        return False
+    return ip.is_private or ip.is_loopback
+
+
+def _check_allowed():
+    """หน้าตรวจข้อมูลบอกโครงสร้างรหัสของ HOSxP — เปิดเฉพาะ LAN · ANC_CHECK_OPEN=1 = เปิดทุกที่"""
+    return os.getenv("ANC_CHECK_OPEN", "0") == "1" or _from_lan()
+
+
+@app.context_processor
+def _audit_flags():
+    return {"check_allowed": _check_allowed()}
+
+
 @app.route("/")
 def dashboard():
     d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
@@ -207,6 +277,45 @@ def api_data():
     d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
     return app.response_class(json.dumps(build_context(d1, d2), ensure_ascii=False, default=str),
                               mimetype="application/json")
+
+
+@app.route("/check")
+def check_page():
+    """Data Audit — รหัสที่แอปใช้เทียบกับข้อมูลของ รพ. นี้ (ค่าเริ่มต้น 90 วันล่าสุด) · เฉพาะจำนวนนับ"""
+    if not _check_allowed():
+        return render_template("check.html", lan_only=True), 403
+    d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"),
+                         default_d1=date.today() - timedelta(days=89), max_days=366)
+    cfg = load_config()
+    pcu_err = None
+    try:
+        pcu_map = load_pcu_map(cfg.pcu_map_path)
+    except PcuMapError as e:
+        pcu_map, pcu_err = None, str(e)
+    return render_template("check.html", lan_only=False, c=check.audit(d1, d2, cfg, pcu_map), cfg=cfg,
+                           d1=d1.isoformat(), d2=d2.isoformat(), period=f"{thai_date(d1)} – {thai_date(d2)}",
+                           pcu_err=pcu_err)
+
+
+@app.route("/check/pcu_map_template.csv")
+def pcu_map_template():
+    """แม่แบบ pcu_map.csv จากหมู่บ้านที่พบในทะเบียนฝากครรภ์ 1 ปีล่าสุด — ไม่มีข้อมูลรายคน"""
+    if not _check_allowed():
+        return {"error": "เปิดได้เฉพาะในเครือข่ายโรงพยาบาล"}, 403
+    cfg = load_config()
+    d2 = date.today()
+    try:
+        pcu_map = load_pcu_map(cfg.pcu_map_path)
+    except PcuMapError:
+        pcu_map = None
+    rows = check.pcu_template(queries.pregnancies(d2 - timedelta(days=364), d2, cfg), pcu_map)
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["village_code", "pcu_hospcode", "pcu_name", "tambon", "moo", "pregnancies"])
+    w.writerows(rows)
+    # BOM ให้ Excel เปิดภาษาไทยได้ · load_pcu_map อ่านไฟล์ที่มี BOM ได้
+    return Response("﻿" + buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=pcu_map_template.csv"})
 
 
 @app.route("/healthz")

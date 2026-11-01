@@ -168,7 +168,7 @@ select timestampdiff(minute, timestamp(st.vstdate, st.{a}), timestamp(st.vstdate
 
 REFERS = """
 select r.referout_id refer_id, r.refer_date date, r.hn, r.pdx, i.name dx_name,
-       coalesce(nullif(r.refer_hospcode, ''), r.hospcode) dest, h.name dest_name,
+       coalesce(nullif(h.hospcode_5_digit, ''), nullif(r.refer_hospcode, ''), r.hospcode) dest, h.name dest_name,
        timestampdiff(year, pt.birthday, r.refer_date) age,
        pt.chwpart, pt.amppart, pt.tmbpart, pt.moopart,
        timestampdiff(minute, timestamp(o.vstdate, o.vsttime), timestamp(r.refer_date, r.refer_time)) minutes
