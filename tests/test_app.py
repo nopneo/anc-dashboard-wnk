@@ -226,3 +226,11 @@ def test_postnatal_rows_reach_metrics(client, fake_data, monkeypatch):
     monkeypatch.setattr(queries, "postnatal", pnc)
     _html(client)
     assert seen["ids"] == [1, 2, 3, 4, 5, 6]
+
+
+def test_section_order(client, fake_data):
+    """Refer รายเดือน + Top 10 Dx อยู่ก่อนแยกตาม รพ.สต. · Alert & Action อยู่ท้ายสุด (ก่อนเมนูด่วน)"""
+    html = _html(client)
+    pos = lambda t: html.index(t)
+    assert pos("<h3>Refer รายเดือน") < pos("<h3>Top 10 Refer Diagnoses") < pos("<h3>แยกตาม รพ.สต.")
+    assert pos("<h3>สรุป Refer รายเดือน") < pos("<h3>Alert &amp; Action") < pos("เมนูด่วน")

@@ -220,7 +220,7 @@
     </section>
   </div>
 
-  <!-- ===================================== 3. indicators | 8. destinations + 10. alerts -->
+  <!-- ===================================== 3. indicators | 8. destinations -->
   <div class="grid g-231">
     <section class="panel">
       <div class="ph"><span class="ic">🏆</span><h3>ตัวชี้วัดคุณภาพ</h3><small>ANC 10 ตัว</small></div>
@@ -280,48 +280,8 @@
       {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
       </div>
     </section>
-    <section class="panel">
-      <div class="ph"><span class="ic">🔔</span><h3>Alert &amp; Action</h3><small>รายการที่ต้องติดตาม</small>
-        {% if d.alerts %}<span class="tag">{{ d.alerts | length }} รายการ</span>{% endif %}</div>
-      <div class="pb">
-      {% if d.alerts %}
-      <ul class="alist">
-        {% for a in d.alerts %}
-        <li><span class="st {{ a.level }}">{{ {'red': 'ด่วน', 'amber': 'เฝ้าระวัง', 'info': 'ข้อมูล'}[a.level] }}</span>
-          <div><b>{{ a.text }}</b><small>{{ a.owner }} · {{ a.action }}</small></div></li>
-        {% endfor %}
-      </ul>
-      {% else %}<div class="empty">ไม่มีรายการที่ต้องติดตาม</div>{% endif %}
-      </div>
-    </section>
     </div>
   </div>
-
-  <!-- ============================================================ 5. PCU -->
-  <section class="panel">
-    <div class="ph"><span class="ic">🏘️</span><h3>แยกตาม รพ.สต.</h3><small>ตำบล + หมู่ในที่อยู่ของแม่ เทียบ village_pcu.csv (แบบ mental_health_dashboard)</small></div>
-    <div class="pb">
-    {{ sec_error('pcu') }}
-    {% if d.pcu_missing %}
-      <div class="empty">ยังไม่ได้ตั้งค่าการจับคู่หมู่บ้าน → รพ.สต. (ไฟล์ <b>village_pcu.csv</b> แบบเดียวกับ mental_health_dashboard)
-        {% if check_allowed and not print_mode %}— ดาวน์โหลดแม่แบบได้ที่ <a href="{{ url_for('check_page') }}">หน้าตรวจข้อมูล</a>{% endif %}</div>
-    {% elif d.pcu %}
-    <div class="scroll">
-    <table class="t">
-      <tr><th>รพ.สต.</th><th class="n">รายใหม่</th><th class="n">&lt;20</th><th class="n">20–34</th><th class="n">≥35</th>
-        <th class="n">ก่อน 12 wk</th><th class="n">ครบ 5 ครั้ง</th><th class="n">dT</th><th class="n">โลหิตจาง</th>
-        <th class="n">LBW</th><th class="n">Refer</th></tr>
-      {% for r in d.pcu %}
-      <tr><td class="id">{{ r.name }} {% if r.hospcode not in ('unk', 'out') %}<span class="code">{{ r.hospcode }}</span>{% endif %}</td>
-        <td class="n">{{ r.new }}</td><td class="n">{{ r.teen }}</td><td class="n">{{ r.repro }}</td><td class="n">{{ r.elder }}</td>
-        <td class="n">{{ rate(r.early12) }}</td><td class="n">{{ rate(r.visit5) }}</td><td class="n">{{ rate(r.dt) }}</td>
-        <td class="n">{{ rate(r.anemia) }}</td><td class="n">{{ rate(r.lbw) }}</td><td class="n">{{ '—' if rerr else r.refer }}</td></tr>
-      {% endfor %}
-    </table>
-    </div>
-    {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
-    </div>
-  </section>
 
   <!-- ===================================== 6. refer monthly | 7. top dx -->
   <div class="grid g-21">
@@ -376,6 +336,32 @@
     </section>
   </div>
 
+  <!-- ============================================================ 5. PCU -->
+  <section class="panel">
+    <div class="ph"><span class="ic">🏘️</span><h3>แยกตาม รพ.สต.</h3><small>ตำบล + หมู่ในที่อยู่ของแม่ เทียบ village_pcu.csv (แบบ mental_health_dashboard)</small></div>
+    <div class="pb">
+    {{ sec_error('pcu') }}
+    {% if d.pcu_missing %}
+      <div class="empty">ยังไม่ได้ตั้งค่าการจับคู่หมู่บ้าน → รพ.สต. (ไฟล์ <b>village_pcu.csv</b> แบบเดียวกับ mental_health_dashboard)
+        {% if check_allowed and not print_mode %}— ดาวน์โหลดแม่แบบได้ที่ <a href="{{ url_for('check_page') }}">หน้าตรวจข้อมูล</a>{% endif %}</div>
+    {% elif d.pcu %}
+    <div class="scroll">
+    <table class="t">
+      <tr><th>รพ.สต.</th><th class="n">รายใหม่</th><th class="n">&lt;20</th><th class="n">20–34</th><th class="n">≥35</th>
+        <th class="n">ก่อน 12 wk</th><th class="n">ครบ 5 ครั้ง</th><th class="n">dT</th><th class="n">โลหิตจาง</th>
+        <th class="n">LBW</th><th class="n">Refer</th></tr>
+      {% for r in d.pcu %}
+      <tr><td class="id">{{ r.name }} {% if r.hospcode not in ('unk', 'out') %}<span class="code">{{ r.hospcode }}</span>{% endif %}</td>
+        <td class="n">{{ r.new }}</td><td class="n">{{ r.teen }}</td><td class="n">{{ r.repro }}</td><td class="n">{{ r.elder }}</td>
+        <td class="n">{{ rate(r.early12) }}</td><td class="n">{{ rate(r.visit5) }}</td><td class="n">{{ rate(r.dt) }}</td>
+        <td class="n">{{ rate(r.anemia) }}</td><td class="n">{{ rate(r.lbw) }}</td><td class="n">{{ '—' if rerr else r.refer }}</td></tr>
+      {% endfor %}
+    </table>
+    </div>
+    {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
+    </div>
+  </section>
+
   <!-- ============================================================ 9. refer table -->
   <div class="grid">
     <section class="panel">
@@ -399,6 +385,22 @@
     </section>
 
   </div>
+  <!-- ============================================================ 10. alerts -->
+    <section class="panel">
+      <div class="ph"><span class="ic">🔔</span><h3>Alert &amp; Action</h3><small>รายการที่ต้องติดตาม</small>
+        {% if d.alerts %}<span class="tag">{{ d.alerts | length }} รายการ</span>{% endif %}</div>
+      <div class="pb">
+      {% if d.alerts %}
+      <ul class="alist">
+        {% for a in d.alerts %}
+        <li><span class="st {{ a.level }}">{{ {'red': 'ด่วน', 'amber': 'เฝ้าระวัง', 'info': 'ข้อมูล'}[a.level] }}</span>
+          <div><b>{{ a.text }}</b><small>{{ a.owner }} · {{ a.action }}</small></div></li>
+        {% endfor %}
+      </ul>
+      {% else %}<div class="empty">ไม่มีรายการที่ต้องติดตาม</div>{% endif %}
+      </div>
+    </section>
+
   {% endif %}
 
   {% if not print_mode %}
