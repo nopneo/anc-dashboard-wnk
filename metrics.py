@@ -96,8 +96,25 @@ def _by_anc(visits):
     return out
 
 
-def _delivered(pregs, d1, d2):
-    return [p for p in pregs if _in(p.get("labor_date"), d1, d2)]
+def _delivered(pregs, d1, d2, area=None):
+    """ครรภ์ที่คลอดในช่วง = ตัวหารของ KPI · area = เงื่อนไข "ในเขต" (None = ทั้งหมด)"""
+    return [p for p in pregs if _in(p.get("labor_date"), d1, d2) and (area is None or area(p))]
+
+
+def in_area(p, cfg):
+    """ตัวหารตามเอกสาร KPI: หญิงไทย และ (อาศัยในอำเภอ หรือ อาศัยนอกเขตแต่มาคลอดที่ รพ.)"""
+    if not p.get("thai"):
+        return False
+    resident = (p.get("village") or "").startswith(cfg.chwpart + cfg.amppart)
+    return resident or p.get("labour_hospcode") == cfg.hospcode
+
+
+def labor_completeness(pregs, d1, d2):
+    """ครรภ์ที่ LMP ครบ 42 สัปดาห์ ณ d2 (LMP ไม่เกิน 1 ปีก่อน d1) มีวันคลอดในทะเบียนกี่ % — ต่ำ = ตัวหาร KPI ขาด"""
+    due = [p for p in pregs if p.get("lmp") and (d2 - p["lmp"]).days >= 42 * 7
+           and p["lmp"] >= d1 - timedelta(days=365)]
+    rec = sum(1 for p in due if p.get("labor_date"))
+    return {"due": len(due), "recorded": rec, "pct": pct(rec, len(due))}
 
 
 def _first_ga(p, vs):
@@ -165,9 +182,10 @@ def quality(delivered, cfg):
     return total, parts
 
 
-def indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=()):
+def indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=(), area=None):
+    """area = เงื่อนไขตัวหารในเขต (ใช้กับ KPI ที่หารด้วยครรภ์ที่คลอด) · ข้อมูลบริการ / ไอโอดีน (Workload) นับทั้งหมด"""
     vmap = _by_anc(visits)
-    delivered = _delivered(pregs, d1, d2)
+    delivered = _delivered(pregs, d1, d2, area)
     n_visits = sum(1 for v in visits if not v.get("precare") and _in(v.get("date"), d1, d2))
     waits = [w for w in waits if w is not None]
     months = months_in_range(d1, d2)
@@ -180,7 +198,7 @@ def indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=()):
         "per_month": _count(round(n_visits / months, 1) if months else None),
         "early12": rate_early12(delivered, vmap, cfg),
         "visit5": rate_visit5(delivered, vmap, cfg),
-        "postnatal": rate_postnatal(pregs, pnc, d1, d2, cfg),
+        "postnatal": rate_postnatal([p for p in pregs if area is None or area(p)], pnc, d1, d2, cfg),
         "quality": q_total,
         "quality_parts": q_parts,
         "iodine": rate_iodine(pregs, visits, d1, d2, cfg),
@@ -192,10 +210,10 @@ def indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=()):
     }
 
 
-def by_age(pregs, visits, d1, d2, cfg):
+def by_age(pregs, visits, d1, d2, cfg, area=None):
     vmap = _by_anc(visits)
     new = [p for p in pregs if _in(p.get("register_date"), d1, d2)]
-    delivered = _delivered(pregs, d1, d2)
+    delivered = _delivered(pregs, d1, d2, area)
     out = {}
     for g in AGE_GROUPS:
         gnew = [p for p in new if age_group(p.get("age")) == g]
@@ -359,7 +377,7 @@ def _pcu_order(pcu_map, cfg):
     return pcus + [(cfg.hospcode, names.get(cfg.hospcode) or "เขต รพ."), UNK, OUT]
 
 
-def by_pcu(pregs, visits, infants, refers, d1, d2, cfg, pcu_map):
+def by_pcu(pregs, visits, infants, refers, d1, d2, cfg, pcu_map, area=None):
     vmap = _by_anc(visits)
     order = _pcu_order(pcu_map, cfg)
     groups = {code: {"pregs": [], "infants": [], "refer": 0} for code, _ in order}
@@ -378,7 +396,7 @@ def by_pcu(pregs, visits, infants, refers, d1, d2, cfg, pcu_map):
     for hcode, name in order:
         g = groups[hcode]
         new = [p for p in g["pregs"] if _in(p.get("register_date"), d1, d2)]
-        delivered = _delivered(g["pregs"], d1, d2)
+        delivered = _delivered(g["pregs"], d1, d2, area)
         row = {"hospcode": hcode, "name": name, "new": len(new),
                "early12": rate_early12(delivered, vmap, cfg), "visit5": rate_visit5(delivered, vmap, cfg),
                "dt": rate_flag("dt", "has_dt", delivered, cfg), "anemia": rate_anemia(delivered, cfg),

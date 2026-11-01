@@ -94,6 +94,7 @@ def _nonempty(t):
 PREGNANCIES = """
 select a.person_anc_id anc_id, pt.hn,
        timestampdiff(year, coalesce(pt.birthday, pe.birthdate), a.anc_register_date) age,
+       coalesce(nullif(pt.nationality, ''), pe.nationality) nationality, a.labour_hospcode,
        pt.chwpart, pt.amppart, pt.tmbpart, pt.moopart, v.village_code v_code,
        a.anc_register_date register_date, a.lmp, a.labor_date,
        (select l.anc_lab_result from person_anc_lab l
@@ -159,6 +160,8 @@ def pregnancies(d1, d2, cfg):
                     "lmp": _date(r.get("lmp")), "labor_date": _date(r.get("labor_date")),
                     "hct_late": _float(r.get("hct_lab")) or _float(r.get("hct_anc")),
                     "has_dt": _flag(r.get("has_dt")), "has_dental": _flag(r.get("has_dental")),
+                    "thai": str(r.get("nationality") or "").strip() == cfg.thai_nationality,
+                    "labour_hospcode": (str(r.get("labour_hospcode") or "").strip() or None),
                     "has_iodine": _flag(r.get("has_iodine")), "q_cbc": _flag(r.get("q_cbc")),
                     "q_thal": _flag(r.get("q_thal")), "q_us": _flag(r.get("q_us")),
                     "q_down": _flag(r.get("q_down")), "q_dm": _flag(r.get("q_dm"))})

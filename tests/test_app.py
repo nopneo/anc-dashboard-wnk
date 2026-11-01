@@ -11,7 +11,7 @@ LMP = date(2025, 9, 1)
 def _preg(i, age, village, labor=date(2026, 5, 1)):
     return {"anc_id": i, "hn": "HN-SECRET", "age": age, "village": village, "register_date": date(2026, 1, 10),
             "lmp": LMP, "labor_date": labor, "hct_late": 31.0 if i % 2 else 36.0, "has_dt": i % 2 == 0,
-            "has_dental": True}
+            "has_dental": True, "thai": i != 4, "labour_hospcode": "24060"}
 
 
 @pytest.fixture
@@ -194,10 +194,11 @@ def test_range_presets():
 
 def test_active_preset_pill(client, fake_data):
     html = _html(client)                                   # 2026-01-01..2026-06-30 ไม่ตรง preset ใด
-    assert 'class="pill on"' not in html
+    assert html.count('class="pill on"') == 1             # มีแค่ปุ่มตัวหาร
     p = appmod.range_presets(date.today())[2]
     html = _html(client, f"/?d1={p['d1']}&d2={p['d2']}")
-    assert 'class="pill on"' in html and "ปีงบนี้</a>" in html
+    assert html.count('class="pill on"') == 2
+    assert f'class="pill on" href="?d1={p["d1"]}&amp;d2={p["d2"]}&amp;scope=area">ปีงบนี้</a>' in html
 
 
 def test_quick_menu_hidden_in_print(client, fake_data):
@@ -235,3 +236,27 @@ def test_section_order(client, fake_data):
     pos = lambda t: html.index(t)
     assert pos("<h3>ตัวชี้วัดคุณภาพ") < pos("<h3>Refer Destinations") < pos("<h3>Top 10 Refer Diagnoses")         < pos("<h3>Refer รายเดือน") < pos("<h3>แยกตาม รพ.สต.")
     assert pos("<h3>สรุป Refer รายเดือน") < pos("<h3>Alert &amp; Action") < pos("เมนูด่วน")
+
+
+# ---------- ตัวหารในเขต ----------
+
+def test_scope_default_is_area_with_toggle(client, fake_data):
+    html = _html(client)
+    assert "ตัวหาร:" in html and 'class="pill on" href="?d1=2026-01-01&amp;d2=2026-06-30&amp;scope=area"' in html
+    assert 'href="?d1=2026-01-01&amp;d2=2026-06-30&amp;scope=all"' in html
+    assert "ตัวหารในเขต" in html
+
+
+def test_scope_all_changes_denominator(client, fake_data, monkeypatch):
+    import json
+    get = lambda q: json.loads(client.get("/api/data.json?d1=2026-01-01&d2=2026-06-30" + q).get_data(as_text=True))
+    area, all_ = get(""), get("&scope=all")
+    assert area["scope"] == "area" and all_["scope"] == "all"
+    # fake_data: 6 ครรภ์คลอด · ไม่ใช่ไทย/นอกอำเภอบางราย → ตัวหารในเขตน้อยกว่า
+    assert area["ind"]["dt"]["den"] < all_["ind"]["dt"]["den"] == 6
+    assert area["ind"]["new"]["value"] == all_["ind"]["new"]["value"]
+
+
+def test_labor_warning_on_dashboard(client, fake_data):
+    html = _html(client)
+    assert "บันทึกวันคลอด" in html

@@ -192,3 +192,38 @@ def test_quality_anc_all_five_activities():
     comp = ind["quality_parts"]
     assert [c["key"] for c in comp] == ["q_cbc", "q_thal", "q_us", "q_down", "q_dm"]
     assert next(c for c in comp if c["key"] == "q_down")["rate"]["num"] == 2
+
+
+# ---------- ตัวหารในเขต (นิยามเอกสาร KPI) ----------
+
+def test_in_area_rule():
+    """หญิงไทย และ (อยู่ในอำเภอ หรือ อยู่นอกเขตแต่มาคลอดที่ รพ.)"""
+    from metrics import in_area
+    base = dict(preg(1), thai=True, labour_hospcode="24060")
+    assert in_area(dict(base, village="30250101"), CFG) is True
+    assert in_area(dict(base, village="30210101"), CFG) is False                      # นอกอำเภอ คลอดที่อื่น
+    assert in_area(dict(base, village="30210101", labour_hospcode="10894"), CFG) is True  # นอกเขต มาคลอดที่ รพ.
+    assert in_area(dict(base, village=None, labour_hospcode=None), CFG) is False
+    assert in_area(dict(base, village="30250101", thai=False), CFG) is False           # ไม่ใช่หญิงไทย
+
+
+def test_area_filters_kpi_denominators_only():
+    from metrics import in_area
+    inside = dict(preg(1, reg=date(2026, 2, 1)), thai=True, labour_hospcode="10894", village="30250101", has_dt=True)
+    outside = dict(preg(2, reg=date(2026, 2, 1)), thai=True, labour_hospcode="24060", village="30210101")
+    area = lambda p: in_area(p, CFG)
+    r = indicators([inside, outside], [], [], [], D1, D2, CFG, area=area)
+    assert (r["dt"]["num"], r["dt"]["den"]) == (1, 1)              # ตัวหาร KPI นับเฉพาะในเขต
+    assert r["new"]["value"] == 2                                   # ข้อมูลบริการนับทั้งหมด
+    a = by_age([inside, outside], [], D1, D2, CFG, area=area)
+    assert a["repro"]["new"] == 2 and a["repro"]["early12"]["den"] == 1
+    assert indicators([inside, outside], [], [], [], D1, D2, CFG)["dt"]["den"] == 2   # ไม่ส่ง area = ทั้งหมด
+
+
+def test_labor_completeness():
+    from metrics import labor_completeness
+    p = [preg(1, lmp=date(2025, 1, 1), labor=date(2025, 10, 1)),
+         preg(2, lmp=date(2025, 1, 1), labor=None),
+         preg(3, lmp=date(2026, 5, 1), labor=None),       # ยังไม่ครบ 42 wk ณ d2 → ไม่นับ
+         preg(4, lmp=None, labor=None)]
+    assert labor_completeness(p, D1, D2) == {"due": 2, "recorded": 1, "pct": 50.0}

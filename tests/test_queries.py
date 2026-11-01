@@ -168,3 +168,15 @@ def test_postnatal_dates(fake_fetch):
     sql, _ = fake_fetch.calls[-1]
     assert "person_anc_preg_care" in sql and "post_labor_service1_date" in sql
     assert queries.postnatal([]) == []
+
+
+def test_pregnancy_area_fields(fake_fetch):
+    fake_fetch.rows = [{"anc_id": "1", "hn": "1", "age": "25", "chwpart": "30", "amppart": "25", "tmbpart": "01",
+                        "moopart": "01", "register_date": "2026-01-05", "lmp": None, "labor_date": None,
+                        "hct_lab": None, "hct_anc": None, "has_dt": "0", "has_dental": "0", "nationality": "48",
+                        "labour_hospcode": "10894"}]
+    r = queries.pregnancies(D1, D2, load_config({"ANC_HCT_LAB_IDS": "6", "ANC_CBC_LAB_CODES": "1",
+                                                 "ANC_DM_LAB_CODES": "2"}))[-1]
+    assert r["thai"] is False and r["labour_hospcode"] == "10894"
+    assert queries.pregnancies(D1, D2, load_config({"ANC_HCT_LAB_IDS": "6", "ANC_CBC_LAB_CODES": "1",
+                               "ANC_DM_LAB_CODES": "2", "ANC_THAI_NATIONALITY": "48"}))[-1]["thai"] is True

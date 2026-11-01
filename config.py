@@ -67,6 +67,10 @@ class Config:
     chwpart: str = "30"
     amppart: str = "25"
     hospcode: str = "10894"
+    #: สัญชาติไทย (person.nationality / patient.nationality) — ตัวหาร KPI นับเฉพาะหญิงไทย
+    thai_nationality: str = "99"
+    #: บันทึกวันคลอดน้อยกว่านี้ (% ของครรภ์ที่ครบกำหนดแล้ว) → ขึ้นเตือนบนแดชบอร์ด
+    labor_warn_pct: float = 80
     data_audited: bool = False
     cache_seconds: int = 600
 
@@ -117,6 +121,8 @@ def load_config(env=os.environ):
         chwpart=(g("ANC_CHWPART") or d.chwpart).strip().zfill(2),
         amppart=(g("ANC_AMPPART") or d.amppart).strip().zfill(2),
         hospcode=(g("ANC_HOSPCODE") or d.hospcode).strip(),
+        thai_nationality=(g("ANC_THAI_NATIONALITY") or d.thai_nationality).strip(),
+        labor_warn_pct=_num(g("ANC_LABOR_WARN_PCT"), d.labor_warn_pct),
         data_audited=g("ANC_DATA_AUDITED", "0").strip() == "1",
         cache_seconds=int(_num(g("ANC_CACHE_SECONDS"), d.cache_seconds)),
     )

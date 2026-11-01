@@ -54,7 +54,7 @@
         <div><b>{{ today_label }}</b><small id="clock">ข้อมูล ณ {{ d.fetched_at }}</small></div></div>
       {% if not print_mode %}
         {% if check_allowed %}<a class="btn white" href="{{ url_for('check_page') }}">🔎 ตรวจข้อมูล</a>{% endif %}
-        {% if export_enabled %}{% set q = '?d1=' ~ d.d1 ~ '&d2=' ~ d.d2 %}
+        {% if export_enabled %}{% set q = '?d1=' ~ d.d1 ~ '&d2=' ~ d.d2 ~ '&scope=' ~ d.scope %}
         <a class="btn red dl" href="{{ url_for('export', fmt='pdf') }}{{ q }}">⬇ PDF</a>{% endif %}
       {% endif %}
     </div>
@@ -62,13 +62,20 @@
 
   <!-- ============================================================ filters -->
   <div class="filters">
-    <span class="period">ช่วงข้อมูล <b>{{ d.period_label }}</b> · HOSxP (อ่านอย่างเดียว)</span>
+    <span class="period">ช่วงข้อมูล <b>{{ d.period_label }}</b> · ตัวหาร{{ d.scope_label }} · HOSxP (อ่านอย่างเดียว)
+      · บันทึกวันคลอด {{ fmt(d.labor.pct) }}{{ '%' if d.labor.pct is not none }} ของครรภ์ครบกำหนด</span>
     {% if not print_mode %}
     <span class="lbl">▼ ช่วงเวลา:</span>
     {% for p in presets %}
-      <a class="pill{{ ' on' if p.d1 == d.d1 and p.d2 == d.d2 }}" href="?d1={{ p.d1 }}&amp;d2={{ p.d2 }}">{{ p.label }}</a>
+      <a class="pill{{ ' on' if p.d1 == d.d1 and p.d2 == d.d2 }}" href="?d1={{ p.d1 }}&amp;d2={{ p.d2 }}&amp;scope={{ d.scope }}">{{ p.label }}</a>
+    {% endfor %}
+    <span class="lbl">ตัวหาร:</span>
+    {% for key, label in scopes.items() %}
+      <a class="pill{{ ' on' if key == d.scope }}" href="?d1={{ d.d1 }}&amp;d2={{ d.d2 }}&amp;scope={{ key }}"
+         title="{{ 'หญิงไทยที่อาศัยในอำเภอ หรืออยู่นอกเขตแต่มาคลอดที่ รพ. (นิยามเอกสาร KPI)' if key == 'area' else 'ทุกครรภ์ในทะเบียนฝากครรภ์' }}">{{ label }}</a>
     {% endfor %}
     <form method="get">
+      <input type="hidden" name="scope" value="{{ d.scope }}">
       <input type="date" name="d1" value="{{ d.d1 }}" aria-label="ตั้งแต่">
       <input type="date" name="d2" value="{{ d.d2 }}" aria-label="ถึง">
       <button type="submit">กำหนดเอง</button>
@@ -90,6 +97,13 @@
       try { if (localStorage.getItem(bar.dataset.auditKey)) bar.remove(); } catch (e) {}
     })();
   </script>
+  {% endif %}
+
+  {% if d.labor.pct is not none and d.labor.pct < d.labor.warn_pct %}
+  <div class="audit-bar"><div style="background:#fdecea;border-color:#f5a3a3;color:#7f1d1d">
+    ⚠ <b>บันทึกวันคลอดในทะเบียนฝากครรภ์เพียง {{ d.labor.pct }}%</b> ({{ d.labor.recorded }}/{{ d.labor.due }} ครรภ์ที่ครบกำหนดแล้ว)
+    — ตัวชี้วัดที่หารด้วย “ครรภ์ที่คลอดในช่วง” จะขาดรายที่ไม่ได้ลงวันคลอด ควรลงวันคลอดใน person_anc ให้ครบ
+  </div></div>
   {% endif %}
 
   {% set k = d.ind %}
@@ -223,7 +237,7 @@
   <!-- ===================================== 3. indicators | 8. destinations + 7. top dx -->
   <div class="grid g-231">
     <section class="panel">
-      <div class="ph"><span class="ic">🏆</span><h3>ตัวชี้วัดคุณภาพ</h3><small>ANC 10 ตัว</small></div>
+      <div class="ph"><span class="ic">🏆</span><h3>ตัวชี้วัดคุณภาพ</h3><small>ANC 10 ตัว · ตัวหาร{{ d.scope_label }}</small></div>
       <div class="pb">
       {#- ฝากครรภ์รายใหม่ / ครั้งบริการ / เฉลี่ยต่อเดือน เป็นข้อมูลบริการ (การ์ดด้านบน) ไม่ใช่ตัวชี้วัด -#}
       {% set rows = [
@@ -257,7 +271,8 @@
         {% endfor %}
       </table>
       </div>
-      <p class="hint">ตัวหาร ≤12 wk / ครบ 5 ครั้ง / คุณภาพ / dT / ช่องปาก = ครรภ์ที่คลอดในช่วง · หลังคลอด = คลอดในช่วงและพ้น 42 วัน ·
+      <p class="hint">{% if d.scope == 'area' %}ตัวหารในเขต = หญิงไทยที่อาศัยในอำเภอ หรืออยู่นอกเขตแต่มาคลอดที่ รพ. ·
+        {% endif %}ตัวหาร ≤12 wk / ครบ 5 ครั้ง / คุณภาพ / dT / ช่องปาก = ครรภ์ที่คลอดในช่วง · หลังคลอด = คลอดในช่วงและพ้น 42 วัน ·
         ไอโอดีน = ครรภ์ที่มาฝากครรภ์ที่ รพ. ในช่วง · โลหิตจาง = คลอดและมีผล Hct · LBW = ทารกเกิดมีชีพ ·
         นิยามตามเอกสาร KPI กรมอนามัย / HDC · ค่าจาง = ตัวหารน้อยกว่า 5</p>
       </div>
@@ -412,7 +427,7 @@
     <a class="q-sky" href="{{ url_for('check_page') }}"><span class="qi">🔎</span>ตรวจข้อมูลก่อนใช้</a>
     <a class="q-mint" href="{{ url_for('village_pcu_template') }}"><span class="qi">🏘️</span>แม่แบบ village_pcu.csv</a>
     {% endif %}
-    {% if export_enabled %}{% set q = '?d1=' ~ d.d1 ~ '&d2=' ~ d.d2 %}
+    {% if export_enabled %}{% set q = '?d1=' ~ d.d1 ~ '&d2=' ~ d.d2 ~ '&scope=' ~ d.scope %}
     <a class="q-pink dl" href="{{ url_for('export', fmt='jpg') }}{{ q }}"><span class="qi">🖼️</span>ส่งออก JPG</a>
     <a class="q-peach dl" href="{{ url_for('export', fmt='pdf') }}{{ q }}"><span class="qi">📄</span>ส่งออก PDF</a>
     {% endif %}

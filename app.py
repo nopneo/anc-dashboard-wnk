@@ -188,9 +188,15 @@ def _safe(errors, name, fn, default):
     return default
 
 
-def build_context(d1, d2):
+SCOPES = {"area": "ในเขต (ตาม KPI)", "all": "ทั้งหมด"}
+
+
+def build_context(d1, d2, scope="area"):
+    """scope = area: ตัวหาร KPI นับหญิงไทยที่อาศัยในอำเภอหรือมาคลอดที่ รพ. (นิยามเอกสาร KPI) · all: ทุกครรภ์ในทะเบียน"""
     cfg = load_config()
-    key = (d1, d2, cfg)
+    scope = scope if scope in SCOPES else "area"
+    area = (lambda p: metrics.in_area(p, cfg)) if scope == "area" else None
+    key = (d1, d2, scope, cfg)
     hit = _cache.get(repr(key), cfg.cache_seconds)
     if hit:
         return hit
@@ -205,19 +211,21 @@ def build_context(d1, d2):
         return pregs, visits, infants, waits, pnc
 
     pregs, visits, infants, waits, pnc = _safe(errors, "main", main, ([], [], [], [], []))
-    ind = metrics.indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=pnc)
-    age = metrics.by_age(pregs, visits, d1, d2, cfg)
+    ind = metrics.indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=pnc, area=area)
+    age = metrics.by_age(pregs, visits, d1, d2, cfg, area=area)
 
     refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(queries.refers(d1, d2), pregs, cfg), [])
     refer = metrics.refer_summary(refer_rows, d1, d2)
 
     pcu_map = _safe(errors, "pcu", lambda: load_village_pcu(cfg.village_csv, cfg.chwpart, cfg.amppart), None)
-    pcu = metrics.by_pcu(pregs, visits, infants, refer_rows, d1, d2, cfg, pcu_map) if pcu_map is not None else []
+    pcu = metrics.by_pcu(pregs, visits, infants, refer_rows, d1, d2, cfg, pcu_map, area=area) if pcu_map is not None else []
     unmapped = metrics.unmapped_villages(pregs, pcu_map, cfg) if pcu_map is not None else []
 
     ctx = {
         "d1": d1.isoformat(), "d2": d2.isoformat(), "period_label": f"{thai_date(d1)} – {thai_date(d2)}",
         "fetched_at": datetime.now().strftime("%d/%m/") + str(datetime.now().year + 543) + datetime.now().strftime(" %H:%M น."),
+        "scope": scope, "scope_label": SCOPES[scope],
+        "labor": dict(metrics.labor_completeness(pregs, d1, d2), warn_pct=cfg.labor_warn_pct),
         "ind": ind, "age": age, "tracking": metrics.tracking(pregs, visits, d2),
         "trend": metrics.monthly_trend(pregs, visits, d1, d2),
         "pcu": pcu, "pcu_missing": pcu_map is None and "pcu" not in errors,
@@ -301,7 +309,8 @@ def _audit_flags():
 @app.route("/")
 def dashboard():
     d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
-    return render_template("dashboard.html", d=build_context(d1, d2), labels=metrics.IND_LABELS,
+    return render_template("dashboard.html", d=build_context(d1, d2, request.args.get("scope", "area")),
+                           labels=metrics.IND_LABELS, scopes=SCOPES,
                            print_mode=request.args.get("print") == "1", presets=range_presets(),
                            today_label=thai_full_date(date.today()))
 
@@ -309,7 +318,8 @@ def dashboard():
 @app.route("/api/data.json")
 def api_data():
     d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
-    return app.response_class(json.dumps(build_context(d1, d2), ensure_ascii=False, default=str),
+    ctx = build_context(d1, d2, request.args.get("scope", "area"))
+    return app.response_class(json.dumps(ctx, ensure_ascii=False, default=str),
                               mimetype="application/json")
 
 
@@ -414,9 +424,10 @@ def export(fmt):
     if fmt not in MIME or not EXPORT_ENABLED:
         return {"error": "รองรับเฉพาะ png, jpg, pdf" if EXPORT_ENABLED else "ปิดการส่งออกไฟล์"}, 404
     d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
-    qs = urllib.parse.urlencode({"d1": d1.isoformat(), "d2": d2.isoformat(), "print": "1"})
+    scope = request.args.get("scope") if request.args.get("scope") in SCOPES else "area"
+    qs = urllib.parse.urlencode({"d1": d1.isoformat(), "d2": d2.isoformat(), "scope": scope, "print": "1"})
     url = f"http://127.0.0.1:{os.getenv('PORT', '6300')}/?{qs}"
-    name = f"anc_{d1}_{d2}.{fmt}"
+    name = f"anc_{d1}_{d2}{'' if scope == 'area' else '_all'}.{fmt}"
     blob = _export_cache.get(name, EXPORT_CACHE_TTL)
     if blob is not None:
         return send_file(BytesIO(blob), mimetype=MIME[fmt], as_attachment=True, download_name=name)
