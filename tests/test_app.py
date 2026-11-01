@@ -62,7 +62,8 @@ def test_dashboard_renders_sections(client, fake_data):
                   "Top 10 Refer Diagnoses", "Refer Destinations", "สรุป Refer รายเดือน", "Alert &amp; Action"):
         assert title in html, title
     assert "รพ.สต.ทดสอบ" in html and "รพ.มหาราชนครราชสีมา" in html and "O14" in html
-    assert "นอก 43 แฟ้ม" in html
+    assert "43 แฟ้ม" not in html                     # แหล่งข้อมูลคือ HOSxP — แสดงชื่อตาราง HOSxP
+    assert "HOSxP: person_anc_service.pa_week" in html and "HOSxP: ipt_labour_infant" in html
     assert "<td>มี.ค. 69</td>" in html          # เดือนในตาราง refer เป็นภาษาไทย
 
 

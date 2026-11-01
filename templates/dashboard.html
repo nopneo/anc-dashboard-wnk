@@ -62,7 +62,7 @@
     </div>
     <div class="meta">
       <span class="a">{{ d.period_label }}</span>
-      <div class="b">ข้อมูลจาก HOSxP · นิยามตาม 43 แฟ้ม<br>ณ {{ d.fetched_at }}</div>
+      <div class="b">ข้อมูลจาก HOSxP (อ่านอย่างเดียว)<br>ณ {{ d.fetched_at }}</div>
     </div>
   </div>
 
@@ -95,7 +95,7 @@
         <div class="u">{{ k.visit5.num }}/{{ k.visit5.den }} ราย ที่คลอด</div><span class="tg">เป้า ≥ {{ k.visit5.target }}%</span></div>
       <div class="kpi g6"><div class="l">ส่งต่อ (Refer)<small>แม่และเด็ก</small></div>
         <div class="v">{{ '—' if rerr else fmt(d.refer.total) }}</div><div class="u">ครั้ง</div></div>
-      <div class="kpi g7"><div class="l">เวลารอคอยเฉลี่ย<small>นอก 43 แฟ้ม</small></div>
+      <div class="kpi g7"><div class="l">เวลารอคอยเฉลี่ย<small>มาถึง → เริ่มตรวจ</small></div>
         <div class="v">{{ fmt(k.wait.value) }}</div><div class="u">นาที · {{ fmt(k.wait.den) }} visit</div></div>
     </div>
   </section>
@@ -147,16 +147,16 @@
     <header><span class="no">3</span>
       <span><span class="t">ตัวชี้วัดคุณภาพ</span> <span class="st">ANC 10 ตัว · ตัวหาร = ครรภ์ที่คลอดในช่วง</span></span></header>
     {% set rows = [
-      ('new', 'ฝากครรภ์รายใหม่รวม', 'ราย', 'ANC'),
-      ('visits', 'ครั้งบริการ ANC รวม', 'ครั้ง', 'ANC'),
-      ('per_month', 'เฉลี่ยครั้ง/เดือน', 'ครั้ง', 'ANC'),
-      ('early12', 'ฝากครรภ์ก่อน 12 wk', '%', 'ANC.GA'),
-      ('visit5', 'ANC ครบ 5 ครั้ง', '%', 'ANC.GA · LABOR'),
-      ('dt', 'วัคซีน dT', '%', 'EPI'),
-      ('dental', 'ตรวจช่องปาก', '%', 'DENTAL'),
-      ('anemia', 'โลหิตจางใกล้คลอด (Hct < ' ~ d.hct_cutoff ~ '% · GA ≥ ' ~ d.hct_late_ga ~ ')', '%', 'PRENATAL'),
-      ('lbw', 'ทารก LBW (< ' ~ d.lbw_grams ~ ' g)', '%', 'NEWBORN'),
-      ('wait', 'เวลารอคอยเฉลี่ย', 'นาที', None),
+      ('new', 'ฝากครรภ์รายใหม่รวม', 'ราย', 'person_anc'),
+      ('visits', 'ครั้งบริการ ANC รวม', 'ครั้ง', 'person_anc_service'),
+      ('per_month', 'เฉลี่ยครั้ง/เดือน', 'ครั้ง', 'person_anc_service'),
+      ('early12', 'ฝากครรภ์ก่อน 12 wk', '%', 'person_anc_service.pa_week · person_anc_other_precare'),
+      ('visit5', 'ANC ครบ 5 ครั้ง', '%', 'person_anc_service.pa_week · person_anc.labor_date'),
+      ('dt', 'วัคซีน dT', '%', 'ovst_vaccine · person_anc'),
+      ('dental', 'ตรวจช่องปาก', '%', 'dtmain · person_anc'),
+      ('anemia', 'โลหิตจางใกล้คลอด (Hct < ' ~ d.hct_cutoff ~ '% · GA ≥ ' ~ d.hct_late_ga ~ ')', '%', 'person_anc_lab · person_anc'),
+      ('lbw', 'ทารก LBW (< ' ~ d.lbw_grams ~ ' g)', '%', 'ipt_labour_infant'),
+      ('wait', 'เวลารอคอยเฉลี่ย', 'นาที', 'service_time'),
     ] %}
     <div class="scroll">
     <table class="t">
@@ -164,7 +164,7 @@
       {% for key, label, unit, src in rows %}{% set r = k[key] %}
       <tr>
         <td>{{ label }} <span class="src">({{ unit }})</span><br>
-          {% if src %}<span class="src">43 แฟ้ม: {{ src }}</span>{% else %}<span class="pill x43">นอก 43 แฟ้ม</span>{% endif %}</td>
+          <span class="src">HOSxP: {{ src }}</span></td>
         <td class="n">{% if unit == '%' %}{{ rate(r) }}{% else %}{{ fmt(r.value) }}{% endif %}</td>
         <td class="n">{% if r.den is not none and unit == '%' %}{{ r.num }}/{{ r.den }}{% else %}—{% endif %}</td>
         <td class="n">{% if r.target is not none %}{{ '≤' if key in ('anemia', 'lbw') else '≥' }} {{ r.target }}%{% else %}—{% endif %}</td>
@@ -337,9 +337,8 @@
   {% endif %}
 
   <footer class="src">
-    <b>แหล่งข้อมูล</b> — นิยามตามแฟ้ม 43 แฟ้ม ANC · PRENATAL · LABOR · NEWBORN · EPI · DENTAL · REFER_HISTORY
-    คำนวณจาก HOSxP: person_anc · person_anc_service · person_anc_other_precare · person_anc_lab · ovst_vaccine ·
-    dtmain · ipt_labour_infant · referout · service_time (เวลารอคอย นอก 43 แฟ้ม) — แสดงเฉพาะจำนวนนับ ไม่มีข้อมูลรายคน<br>
+    <b>แหล่งข้อมูล</b> — HOSxP (อ่านอย่างเดียว): person_anc · person_anc_service · person_anc_other_precare ·
+    person_anc_lab · ovst_vaccine · dtmain · ipt_labour_infant · referout · service_time — แสดงเฉพาะจำนวนนับ ไม่มีข้อมูลรายคน<br>
     ANC Dashboard เวอร์ชัน {{ version }} · ติดต่อ: {{ contact }} · ผู้พัฒนา: {{ dev_contact }}
   </footer>
 </div>
