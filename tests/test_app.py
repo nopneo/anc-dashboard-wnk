@@ -66,7 +66,7 @@ def test_dashboard_renders_sections(client, fake_data):
     assert "รพ.สต.ทดสอบ" in html and "นอกเขตอำเภอ" in html and "รพ.มหาราชนครราชสีมา" in html and "O14" in html
     assert "43 แฟ้ม" not in html                     # แหล่งข้อมูลคือ HOSxP — แสดงชื่อตาราง HOSxP
     assert "HOSxP: person_anc_service.pa_week" in html and "HOSxP: ipt_labour_infant" in html
-    assert "<td>มี.ค. 69</td>" in html          # เดือนในตาราง refer เป็นภาษาไทย
+    assert ">มี.ค. 69</td>" in html             # เดือนในตาราง refer เป็นภาษาไทย
 
 
 def test_dashboard_empty_range(client, empty_data):
