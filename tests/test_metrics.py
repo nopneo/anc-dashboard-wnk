@@ -227,3 +227,31 @@ def test_labor_completeness():
          preg(3, lmp=date(2026, 5, 1), labor=None),       # ยังไม่ครบ 42 wk ณ d2 → ไม่นับ
          preg(4, lmp=None, labor=None)]
     assert labor_completeness(p, D1, D2) == {"due": 2, "recorded": 1, "pct": 50.0}
+
+
+# ---------- ฝากครรภ์ครบ 8 ครั้งตามเกณฑ์ (เอกสาร 1.7) ----------
+
+def test_ga_bucket8_edges():
+    from metrics import GA_BUCKETS_8, ga_bucket
+    weeks = (12, 13, 20, 21, 26, 27, 30, 31, 34, 35, 36, 37, 38, 39, 40, 41, None)
+    assert [ga_bucket(w, GA_BUCKETS_8) for w in weeks] == [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, None, None]
+
+
+def test_visit8_needs_all_eight_windows():
+    full = (8, 15, 24, 29, 33, 36, 38, 40)
+    r = run([preg(1), preg(2), preg(3)],
+            [visit(1, w) for w in full] + [visit(2, w) for w in full[:7]]
+            + [visit(3, w) for w in (8, 15, 24, 29, 33, 36, 38, 40, 40)])["visit8"]
+    assert (r["num"], r["den"], r["value"]) == (2, 3, 66.7)       # ครรภ์ 2 ขาดช่วง 39–40 wk
+
+
+def test_visit8_target_follows_fiscal_year():
+    from metrics import visit8_target
+    assert visit8_target(date(2026, 9, 30), CFG) == 65          # ปีงบ 2569
+    assert visit8_target(date(2026, 11, 2), CFG) == 70          # ปีงบ 2570
+    assert visit8_target(date(2023, 12, 1), CFG) == 55          # ธ.ค. 2566 = ปีงบ 2567
+    assert visit8_target(date(2020, 1, 1), CFG) == 50 and visit8_target(date(2030, 1, 1), CFG) == 70   # นอกตาราง = ค่าขอบ
+    assert load_config({"ANC_TARGET_VISIT8": "80"}).targets["visit8"] == 80
+    assert visit8_target(date(2026, 9, 30), load_config({"ANC_TARGET_VISIT8": "80"})) == 80
+    r = run([preg(1)], [visit(1, w) for w in (8, 15, 24, 29, 33, 36, 38, 40)])["visit8"]
+    assert r["target"] == 65 and r["ok"] is True

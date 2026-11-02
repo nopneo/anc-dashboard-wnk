@@ -22,11 +22,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _TIME_COL = re.compile(r"vsttime|service([1-9]|1[0-9]|20)")
 
 #: เป้าหมายตัวชี้วัด (%) · anemia และ lbw ยิ่งต่ำยิ่งดี
-TARGET_DEFAULTS = {"early12": 75, "visit5": 75, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7,
+TARGET_DEFAULTS = {"early12": 75, "visit5": 75, "visit8": None, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7,
                    # เอกสาร KPI: หลังคลอด 3 ครั้ง ≥75 · ฝากครรภ์คุณภาพ (HDC) ปีงบ 2570 ≥70 · ไอโอดีนไม่กำหนดเป้า
                    "postnatal": 75, "quality": 70, "iodine": None,
                    # ทารกแรกเกิดขาดออกซิเจน ไม่เกิน 25 ต่อ 1,000 เกิดมีชีพ (ตัวชี้วัดกระทรวง)
                    "asphyxia": 25}
+
+#: เป้าฝากครรภ์ครบ 8 ครั้ง (เอกสาร 1.7) ตามปีงบประมาณ พ.ศ. — ตั้งเป้าเองด้วย ANC_TARGET_VISIT8 (ไม่ตั้ง = ใช้ตารางนี้)
+VISIT8_TARGETS = {2566: 50, 2567: 55, 2568: 60, 2569: 65, 2570: 70}
 
 #: ยาเม็ดที่มีไอโอดีน (รหัสยา 24 หลัก DIDSTD ตามเอกสาร KPI: Triferdine 150, Obimin-az, Iodine GPO,
 #: Nataral, Nataral EF, Prenamed, Iolic)

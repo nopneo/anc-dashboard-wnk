@@ -211,7 +211,7 @@
     </section>
 
     <section class="panel">
-      {% set tk = ['early12', 'visit5', 'postnatal', 'quality', 'iodine', 'dt', 'dental', 'anemia', 'lbw'] | select('in', k | list) | list %}
+      {% set tk = ['early12', 'visit5', 'visit8', 'postnatal', 'quality', 'iodine', 'dt', 'dental', 'anemia', 'lbw'] | select('in', k | list) | list %}
       {% set tk = tk | reject('equalto', 'iodine') | list if k.iodine.target is none else tk %}
       <div class="ph"><span class="ic">🎯</span><h3>ผลตามเป้า</h3><small>ตัวชี้วัดที่มีเป้า {{ tk | length }} ตัว</small></div>
       <div class="pb">
@@ -243,6 +243,7 @@
       {% set rows = [
         ('early12', 'ฝากครรภ์ครั้งแรก ≤ 12 wk', '%', 'person_anc_service.pa_week · person_anc_other_precare'),
         ('visit5', 'ANC ครบ 5 ครั้งตามเกณฑ์ (≤12 · 13–<20 · 20–<26 · 26–<32 · 32–40 wk)', '%', 'person_anc_service.pa_week · person_anc.labor_date'),
+        ('visit8', 'ANC ครบ 8 ครั้งตามเกณฑ์ (≤12 · 13–20 · 21–26 · 27–30 · 31–34 · 35–36 · 37–38 · 39–40 wk) · เป้าตามปีงบ', '%', 'person_anc_service.pa_week · person_anc.labor_date'),
         ('postnatal', 'ดูแลหลังคลอดครบ 3 ครั้ง (วันที่ 1–7 · 8–15 · 16–42)', '%', 'person_anc_preg_care · person_anc.post_labor_service'),
         ('quality', 'ฝากครรภ์คุณภาพ (HDC) — ครบ 5 กิจกรรม', '%', 'lab_order · thalassaemia_result · doctor_operation · ovstdiag'),
         ('iodine', 'ยาเม็ดไอโอดีน (Workload) — ในหญิงที่มาฝากครรภ์', '%', 'opitemrece · drugitems.did'),

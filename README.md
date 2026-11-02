@@ -27,6 +27,7 @@
 |---|---|---|---|---|
 | ฝากครรภ์ครั้งแรก ≤ 12 wk | ANC ครั้งแรก (รวมที่อื่น) GA ≤ 12 ÷ ครรภ์ที่คลอดในช่วง | ≥ 75 | ANC.GA | `person_anc_service.pa_week`, `person_anc_other_precare` |
 | ANC ครบ 5 ครั้งตามเกณฑ์ | มี visit ทุกช่วง GA ≤12, 13–<20, 20–<26, 26–<32, 32–40 ÷ ครรภ์ที่คลอด | ≥ 75 | ANC.GA + LABOR | เหมือนข้างบน |
+| ANC ครบ 8 ครั้งตามเกณฑ์ (เอกสาร 1.7) | มี visit ทุกช่วง GA ≤12 · 13–20 · 21–26 · 27–30 · 31–34 · 35–36 · 37–38 · 39–40 สัปดาห์ ÷ ครรภ์ที่คลอด | ตามปีงบ: 2566 = 50 · 2567 = 55 · 2568 = 60 · **2569 = 65** · 2570 = 70 (ตั้งเองด้วย `ANC_TARGET_VISIT8`) | ANC.GA + LABOR | เหมือนข้างบน |
 | ดูแลหลังคลอดครบ 3 ครั้ง | ได้ดูแลวันที่ 1–7, 8–15, 16–42 หลังคลอดครบ ÷ คลอดในช่วงและพ้น 42 วัน | ≥ 75 | POSTNATAL | `person_anc_preg_care.care_date`, `person_anc.post_labor_service1–3_date` |
 | ฝากครรภ์คุณภาพ (HDC) | ครบ 5 กิจกรรม: CBC/Hct/Hb · ธาลัสซีเมีย · อัลตราซาวด์ 88.78 · ดาวน์ Z36.0/Z36.2 · เบาหวาน (GCT/OGTT/FBS/DTX หรือ Z13.1) ÷ ครรภ์ที่คลอด | ≥ 70 (ปีงบ 2570) | LABFU, PRENATAL, PROCEDURE_OPD, DIAGNOSIS_OPD | `lab_head`/`lab_order`, `person_anc_lab`, `thalassaemia_result`, `doctor_operation`, `ovstdiag` |
 | ยาเม็ดไอโอดีน (Workload) | ได้ยาที่มีไอโอดีน (รหัสยา 24 หลัก `ANC_IODINE_DIDSTD`) ระหว่างตั้งครรภ์ ÷ ครรภ์ที่มาฝากครรภ์ที่ รพ. ในช่วง | ไม่กำหนด | DRUG_OPD.DIDSTD | `opitemrece`, `drugitems.did` |

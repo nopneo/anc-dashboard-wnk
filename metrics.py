@@ -11,14 +11,18 @@ import calendar
 from collections import defaultdict
 from datetime import timedelta
 
+from config import VISIT8_TARGETS
+
 #: ช่วงอายุครรภ์ (สัปดาห์) ของ ANC ครบ 5 ครั้งตามเกณฑ์ (เอกสาร KPI): ≤12 · 13–<20 · 20–<26 · 26–<32 · 32–40
 GA_BUCKETS = ((0, 12), (13, 19), (20, 25), (26, 31), (32, 40))
+#: ฝากครรภ์ครบ 8 ครั้งตามเกณฑ์ (เอกสาร 1.7) — อายุครรภ์เป็นสัปดาห์เต็ม: ≤12+6 · 13–20+6 · 21–26+6 · 27–30+6 · 31–34+6 · 35–36+6 · 37–38+6 · 39–40+6
+GA_BUCKETS_8 = ((0, 12), (13, 20), (21, 26), (27, 30), (31, 34), (35, 36), (37, 38), (39, 40))
 #: ดูแลหลังคลอดครบ 3 ครั้ง: วันที่ 1–7 · 8–15 · 16–42 นับจากวันคลอด
 PNC_WINDOWS = ((1, 7), (8, 15), (16, 42))
 #: กิจกรรมฝากครรภ์คุณภาพ (HDC) — คีย์ใน Pregnancy
 QUALITY_PARTS = (("q_cbc", "CBC / Hct / Hb"), ("q_thal", "คัดกรองธาลัสซีเมีย"), ("q_us", "อัลตราซาวด์"),
                  ("q_down", "คัดกรองดาวน์"), ("q_dm", "คัดกรองเบาหวาน"))
-IND_KEYS = ("new", "visits", "per_month", "early12", "visit5", "postnatal", "quality", "iodine",
+IND_KEYS = ("new", "visits", "per_month", "early12", "visit5", "visit8", "postnatal", "quality", "iodine",
             "dt", "dental", "anemia", "lbw", "wait")
 AGE_GROUPS = ("teen", "repro", "elder")
 #: ตัวชี้วัดที่ค่ายิ่งต่ำยิ่งดี
@@ -48,10 +52,10 @@ def visit_ga(visit, lmp):
     return (visit["date"] - lmp).days // 7
 
 
-def ga_bucket(week):
+def ga_bucket(week, buckets=GA_BUCKETS):
     if week is None:
         return None
-    for i, (lo, hi) in enumerate(GA_BUCKETS):
+    for i, (lo, hi) in enumerate(buckets):
         if lo <= week <= hi:
             return i
     return None
@@ -138,6 +142,24 @@ def rate_visit5(delivered, vmap, cfg):
     return _rate("visit5", sum(1 for p in delivered if _is_5visit(p, vmap.get(p["anc_id"], []))), len(delivered), cfg)
 
 
+def visit8_target(d2, cfg):
+    """เป้าฝากครรภ์ครบ 8 ครั้ง: ค่าที่ตั้งใน env หรือตามปีงบประมาณของวันสิ้นสุดช่วง (นอกตารางใช้ค่าขอบ)"""
+    if cfg.targets.get("visit8") is not None:
+        return cfg.targets["visit8"]
+    fy = (d2.year + 1 if d2.month >= 10 else d2.year) + 543
+    return VISIT8_TARGETS[min(max(fy, min(VISIT8_TARGETS)), max(VISIT8_TARGETS))]
+
+
+def rate_visit8(delivered, vmap, d2, cfg):
+    need = set(range(len(GA_BUCKETS_8)))
+    num = sum(1 for p in delivered
+              if {ga_bucket(visit_ga(v, p.get("lmp")), GA_BUCKETS_8) for v in vmap.get(p["anc_id"], [])} >= need)
+    r = _rate("visit8", num, len(delivered), cfg)
+    r["target"] = visit8_target(d2, cfg)
+    r["ok"] = None if r["value"] is None else r["value"] >= r["target"]
+    return r
+
+
 def rate_flag(key, flag, delivered, cfg):
     return _rate(key, sum(1 for p in delivered if p.get(flag)), len(delivered), cfg)
 
@@ -198,6 +220,7 @@ def indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=(), area=None):
         "per_month": _count(round(n_visits / months, 1) if months else None),
         "early12": rate_early12(delivered, vmap, cfg),
         "visit5": rate_visit5(delivered, vmap, cfg),
+        "visit8": rate_visit8(delivered, vmap, d2, cfg),
         "postnatal": rate_postnatal([p for p in pregs if area is None or area(p)], pnc, d1, d2, cfg),
         "quality": q_total,
         "quality_parts": q_parts,
@@ -418,10 +441,11 @@ def unmapped_villages(pregs, pcu_map, cfg):
 
 # ---------- Alert ----------
 
-IND_LABELS = {"early12": "ฝากครรภ์ก่อน 12 wk", "visit5": "ANC ครบ 5 ครั้ง", "postnatal": "ดูแลหลังคลอดครบ 3 ครั้ง",
+IND_LABELS = {"early12": "ฝากครรภ์ก่อน 12 wk", "visit5": "ANC ครบ 5 ครั้ง", "visit8": "ANC ครบ 8 ครั้ง", "postnatal": "ดูแลหลังคลอดครบ 3 ครั้ง",
               "quality": "ฝากครรภ์คุณภาพ", "iodine": "ยาเม็ดไอโอดีน", "dt": "วัคซีน dT",
               "dental": "ตรวจช่องปาก", "anemia": "โลหิตจางใกล้คลอด", "lbw": "ทารก LBW"}
 _ACTIONS = {"early12": "ค้นหาหญิงตั้งครรภ์ในชุมชนร่วมกับ อสม.", "visit5": "ติดตามนัด ANC ตามช่วงอายุครรภ์",
+            "visit8": "นัด ANC ให้ครบ 8 ช่วงอายุครรภ์ (≤12 · 13–20 · 21–26 · 27–30 · 31–34 · 35–36 · 37–38 · 39–40 wk)",
             "postnatal": "นัดเยี่ยมหลังคลอดวันที่ 1–7, 8–15, 16–42 ร่วมกับ รพ.สต.",
             "quality": "ตรวจกิจกรรมที่ขาด (lab / อัลตราซาวด์ / ดาวน์ / เบาหวาน)",
             "iodine": "จ่ายยาเม็ดเสริมไอโอดีนทุกครั้งที่ฝากครรภ์",
