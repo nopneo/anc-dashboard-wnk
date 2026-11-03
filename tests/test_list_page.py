@@ -159,3 +159,13 @@ def test_labor_due_list_shows_ga_column(client, monkeypatch):
     login(client)
     html = page(client, f"/list?k=labor_due&only=out&{Q}")
     assert html.count('class="row"') == 1 and "HN1" in html and "GA ณ วันสิ้นสุดช่วง" in html
+
+
+def test_hct_list_shows_trail_and_change(client, monkeypatch):
+    from datetime import date
+    monkeypatch.setattr(queries, "hct_series", lambda d1, d2, cfg: {
+        1: [{"date": date(2025, 11, 1), "ga": 9, "hct": 29.0}, {"date": date(2026, 3, 1), "ga": 26, "hct": 34.0}]})
+    appmod._raw._data.clear()
+    login(client)
+    html = page(client, f"/list?k=hct_recovered&{Q}")
+    assert html.count('class="row"') == 1 and "29.0 (9) → 34.0 (26)" in html and "+5.0" in html

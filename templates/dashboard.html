@@ -420,6 +420,32 @@
     </div>
   </section>
 
+  <!-- ============================================================ 11c. anemia trend -->
+  {% set h = d.hct %}
+  <section class="panel">
+    <div class="ph"><span class="ic">🩸</span><h3>ติดตามภาวะซีด</h3>
+      <small>ผล Hct ทุกครั้งระหว่างตั้งครรภ์ · เทียบครั้งแรกกับครั้งล่าสุด · ฐาน = ครรภ์ที่คลอดในช่วง ({{ d.scope_label }})</small></div>
+    <div class="pb">
+      {% if d.errors.get('hct') %}<div class="err">⚠ {{ d.errors['hct'] }}</div>
+      {% elif h %}
+      <div class="otiles o7">
+        <div class="otile"><span class="ol">ได้เจาะ Hct</span><b>{{ L('hct_tested', h.tested.num ~ '/' ~ h.tested.den) }}</b>
+          <small>{{ fmt(h.tested.value) }}{{ '%' if h.tested.value is not none }} · ยังไม่ได้เจาะ {{ L('hct_tested', h.untested, only='out') }} ราย</small></div>
+        <div class="otile {{ 'bad-tile' if h.anemic }}"><span class="ol">ซีดระหว่างตั้งครรภ์</span>
+          <b>{{ L('hct_anemic', h.anemic, only='in') }}</b><small>ราย · ไม่ซีด {{ h.normal }} ราย</small></div>
+        {% for g in h.groups %}
+        <div class="otile {{ 'bad-tile' if g.key in ('not_improved', 'new') and g.n }}"><span class="ol">{{ g.label }}</span>
+          <b>{{ L('hct_' ~ g.key, g.n) }}</b><small>ราย{% if h.anemic %} · {{ (100 * g.n / h.anemic) | round(1) }}% ของที่ซีด{% endif %}</small></div>
+        {% endfor %}
+      </div>
+      <p class="note">ซีด = Hct &lt; {{ d.hct_cutoff }}%{% if d.hct_cutoff_t2 != d.hct_cutoff %} (ไตรมาส 2 GA 14–27: &lt; {{ d.hct_cutoff_t2 }}%){% endif %} ·
+        ดีขึ้น = Hct เพิ่ม ≥ {{ d.hct_improve }} จุด (ประมาณ Hb +1 g/dL) · หายซีด = ครั้งล่าสุดไม่ซีด ·
+        ซีดใหม่ = ครั้งแรกปกติแต่ครั้งล่าสุดซีด · HOSxP: lab_order (Hct) · person_anc_lab ·
+        ช่วงไตรมาส 2 Hct ลดลงเองจากเลือดเจือจาง — ดูอายุครรภ์ประกอบในรายชื่อ</p>
+      {% endif %}
+    </div>
+  </section>
+
   <!-- ============================================================ 11c. STI -->
   <section class="panel">
     <div class="ph"><span class="ic">🧪</span><h3>โรคติดเชื้อทางเพศสัมพันธ์</h3>

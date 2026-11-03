@@ -9,6 +9,7 @@ import drill
 import metrics
 import risk27
 import sti
+import anemia
 from config import load_config
 
 CFG = load_config({})
@@ -75,8 +76,14 @@ def dataset(seed):
         for key in sti.LABELS:
             if rng.random() < .6:
                 res.setdefault(p["anc_id"], {})[key] = (rng.choice(["pos", "neg", "neg", "unclear"]), "x")
+    hct = {}
+    for p in pregs:
+        n = rng.choice([0, 1, 2, 3])
+        if n:
+            hct[p["anc_id"]] = [{"date": D1 + timedelta(days=30 * k), "ga": 10 + 8 * k,
+                                 "hct": rng.choice([28.0, 30.0, 31.5, 33.0, 35.0])} for k in range(n)]
     return {"pregs": pregs, "visits": visits, "pnc": pnc, "infants": infants, "refers": refers, "risk_hits": hits,
-            "sti": res}
+            "sti": res, "hct": hct}
 
 
 AREAS = {"all": None, "area": lambda p: metrics.in_area(p, CFG)}
@@ -199,3 +206,14 @@ def test_labor_due_match(seed):
     data = dataset(seed)
     lc = metrics.labor_completeness(data["pregs"], D1, D2)
     assert M(data, "labor_due") == (lc["due"], lc["recorded"])
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+@pytest.mark.parametrize("scope", ["all", "area"])
+def test_hct_trend_match(seed, scope):
+    data, area = dataset(seed), AREAS[scope]
+    r = anemia.summarize(metrics._delivered(data["pregs"], D1, D2, area), data["hct"], CFG)
+    check_rate(data, "hct_tested", r["tested"], area)
+    assert M(data, "hct_anemic", area) == (r["tested"]["num"], r["anemic"])
+    for g in r["groups"]:
+        check_count(data, "hct_" + g["key"], g["n"], area)

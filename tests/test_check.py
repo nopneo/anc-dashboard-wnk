@@ -229,3 +229,13 @@ def test_audit_risk27_failure_is_a_warning(data, monkeypatch):
     monkeypatch.setattr(queries, "risk_hits", boom)
     monkeypatch.setattr(check, "fetch", Router({}))
     assert _item(check.audit(D1, D2, CFG, None), "risk27")["status"] == "warn"
+
+
+def test_audit_hct_series_codes(monkeypatch, data):
+    monkeypatch.setattr(queries, "hct_series_labs", lambda cfg: ("38",))
+    monkeypatch.setattr(check, "fetch", Router({"hct_series": [
+        {"code": "38", "name": "Hct (CBC)", "n": "100", "num_ok": "97"}]}))
+    it = _item(check.audit(D1, D2, CFG, None), "hct_series")
+    assert it["status"] == "ok" and "38" in it["app_uses"] and "97.0%" in it["hint"]
+    monkeypatch.setattr(check, "fetch", Router({}))
+    assert _item(check.audit(D1, D2, CFG, None), "hct_series")["status"] == "warn"   # ไม่มีผลในช่วง

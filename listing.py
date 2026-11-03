@@ -12,6 +12,7 @@ from openpyxl.styles import Font
 import metrics
 import risk27
 import sti
+import anemia
 
 TH_MONTHS = metrics.TH_MONTHS
 
@@ -28,7 +29,7 @@ def _pcu_name(village, pcu_map, cfg):
     return metrics.pcu_of(village, pcu_map or {}, cfg)[1]
 
 
-def _extra(key, data, d2=None):
+def _extra(key, data, cfg, d2=None):
     """คอลัมน์เพิ่มเฉพาะบางรายชื่อ → [(หัวคอลัมน์, ฟังก์ชันรับครรภ์)]"""
     if key == "labor_due" and d2:
         return [("GA ณ วันสิ้นสุดช่วง (สัปดาห์)", lambda p: (d2 - p["lmp"]).days // 7)]
@@ -36,6 +37,14 @@ def _extra(key, data, d2=None):
         dash = lambda v: "-" if v is None else v
         return [("อายุ ณ วันสิ้นสุดครรภ์", lambda p: dash(p.get("age_labor"))),
                 ("ครรภ์ที่", lambda p: dash(p.get("gravida")))]
+    if (key or "").startswith("hct_"):
+        ser = lambda p: (data.get("hct") or {}).get(p["anc_id"]) or []
+
+        def delta(p):
+            c = anemia.change(ser(p))
+            return "-" if c is None else f"{c:+.1f}"
+        return [("Hct ตามลำดับ (GA สัปดาห์)", lambda p: anemia.trail(ser(p))), ("เปลี่ยนไป", delta),
+                ("ผลติดตาม", lambda p: anemia.LABELS.get(anemia.classify(ser(p), cfg), "ยังไม่ได้เจาะ"))]
     t = re.fullmatch(r"sti_(\w+?)_(test|pos)", key or "")
     if t and t.group(1) in sti.LABELS:
         res = data.get("sti") or {}
@@ -53,7 +62,7 @@ def table(m, data, cfg, pcu_map, names):
         vmap = metrics._by_anc(data["visits"])
         buckets = {"visit5": metrics.GA_BUCKETS, "visit8": metrics.GA_BUCKETS_8}.get(m["key"])
         flags = risk27.flags([p for p, _ in m["rows"]], data["risk_hits"], cfg)
-        extra = _extra(m["key"], data, m.get("d2"))
+        extra = _extra(m["key"], data, cfg, m.get("d2"))
         head = ["ชื่อ-สกุล", "HN", "อายุ", "ที่อยู่", "รพ.สต.", "วันลงทะเบียน", "LMP", "GA ครั้งแรก",
                 "ฝากครรภ์ (ที่ รพ./ที่อื่น)"] + (["ช่วงที่ยังขาด (สัปดาห์)"] if buckets else []) + \
                ["วันคลอด", "สถานที่คลอด"] + [h for h, _ in extra] + ([ok_label] if ok_label else []) +                ["ข้อเสี่ยงที่พบ (27 ข้อ)"]

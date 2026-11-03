@@ -10,6 +10,7 @@ tests/test_drill.py ตรวจว่าจำนวนแถวเท่าก
 import metrics
 import risk27
 import sti
+import anemia
 
 _m = metrics
 
@@ -33,6 +34,9 @@ PREG = {
     "labor_due": ("ครรภ์ครบกำหนดแล้ว (LMP ≥ 42 สัปดาห์) — บันทึกวันคลอดใน person_anc", "ลงวันคลอดแล้ว"),
     **{k: (f"{label} (ครรภ์ที่คลอดในช่วง)", "ได้") for k, label in metrics.QUALITY_PARTS},
     **{k: (f"ภาวะแทรกซ้อน: {label} (ครรภ์ที่คลอดในช่วง)", "พบ") for k, label in metrics.COMPLICATIONS},
+    "hct_tested": ("ได้เจาะ Hct ระหว่างตั้งครรภ์ (ครรภ์ที่คลอดในช่วง)", "เจาะแล้ว"),
+    "hct_anemic": ("ซีดระหว่างตั้งครรภ์ (ครรภ์ที่คลอดและได้เจาะ Hct)", "ซีด"),
+    **{f"hct_{k}": (f"ติดตามภาวะซีด: {label} (ครรภ์ที่คลอดในช่วง)", None) for k, label in anemia.GROUPS},
     **{f"sti_{k}_test": (f"ตรวจ{label} (ฝากครรภ์รายใหม่ในช่วง)", "ตรวจแล้ว") for k, label in sti.LABELS.items()},
     **{f"sti_{k}_pos": (f"ผลบวก {label} (ฝากครรภ์รายใหม่ที่ได้ตรวจ)", "ผลบวก") for k, label in sti.LABELS.items()},
 }
@@ -79,7 +83,7 @@ def _r27(key):
 
 
 def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
-    """data = {"pregs", "visits", "infants", "refers" (ผ่าน select_refers แล้ว), "pnc", "risk_hits", "sti"}"""
+    """data = {"pregs", "visits", "infants", "refers" (ผ่าน select_refers แล้ว), "pnc", "risk_hits", "sti", "hct"}"""
     if key in INFANT:
         return _infants(key, data, d1, d2, cfg, pcu_map, pcu)
     if key in REFER:
@@ -104,6 +108,7 @@ def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
 
     flag = lambda f: (lambda p: bool(p.get(f)))
     st = lambda p, k: sti.status(data.get("sti") or {}, p["anc_id"], k)
+    hg = lambda p: anemia.classify((data.get("hct") or {}).get(p["anc_id"]) or [], cfg)
     spec = {
         "new": lambda: (new, None),
         "early12": lambda: (delivered, lambda p: metrics.is_early12(p, vs(p))),
@@ -124,6 +129,9 @@ def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
         "labor_due": lambda: (metrics.labor_due(pregs, d1, d2), lambda p: p.get("labor_date") is not None),
         **{k: (lambda k=k: (delivered, flag(k))) for k, _ in metrics.QUALITY_PARTS},
         **{k: (lambda k=k: (delivered, flag(k))) for k, _ in metrics.COMPLICATIONS},
+        "hct_tested": lambda: (delivered, lambda p: hg(p) is not None),
+        "hct_anemic": lambda: ([p for p in delivered if hg(p) is not None], lambda p: hg(p) != "normal"),
+        **{f"hct_{k}": (lambda k=k: ([p for p in delivered if hg(p) == k], None)) for k, _ in anemia.GROUPS},
         **{f"sti_{k}_test": (lambda k=k: (new, lambda p: st(p, k) is not None)) for k in sti.LABELS},
         **{f"sti_{k}_pos": (lambda k=k: ([p for p in new if st(p, k) is not None], lambda p: st(p, k) == "pos"))
            for k in sti.LABELS},

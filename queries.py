@@ -399,6 +399,53 @@ def risk_hits(d1, d2, cfg):
     return {"form": risk_form_hits(d1, d2), "dx": risk_dx_hits(d1, d2, cfg), "text": t["text"], "body": t["body"]}
 
 
+#: ค่า Hct (%) ที่เป็นไปได้ — ตัดเกรด / พิมพ์ผิดออก
+HCT_RANGE = (10.0, 60.0)
+HCT_NAME = re.compile(r"^(hct|hematocrit)\b", re.I)
+
+
+def hct_series_labs(cfg):
+    """รหัส lab Hct ใน lab_order: ตั้งใน env หรือเลือกจากชื่อรายการ (Hct / Hematocrit)"""
+    if cfg.hct_series_labs:
+        return tuple(cfg.hct_series_labs)
+    rows = fetch("select lab_items_code code, lab_items_name name from lab_items")
+    return tuple(str(r["code"]) for r in rows if HCT_NAME.search(str(r.get("name") or "").strip()))
+
+
+HCT_SERIES = """
+select a.person_anc_id anc_id, lh.order_date d, a.lmp, lo.lab_order_result v, 'lab' src
+  from person_anc a
+  join person pe on pe.person_id = a.person_id
+  join patient pt on pt.hn = coalesce(nullif(pe.patient_hn, ''),
+        (select p2.hn from patient p2 where p2.cid = pe.cid and pe.cid <> '' limit 1))
+  join lab_head lh on lh.hn = pt.hn
+  join lab_order lo on lo.lab_order_number = lh.lab_order_number
+ where a.labor_date between %(d1)s and %(d2)s and lo.lab_items_code in %(codes)s
+   and lh.order_date between coalesce(a.lmp, a.anc_register_date) and a.labor_date
+union all
+select a.person_anc_id, s.anc_service_date, a.lmp, l.anc_lab_result, 'anc'
+  from person_anc_lab l
+  join person_anc_service s on s.person_anc_service_id = l.person_anc_service_id
+  join person_anc a on a.person_anc_id = s.person_anc_id
+ where a.labor_date between %(d1)s and %(d2)s and l.anc_lab_id in %(hct)s
+"""
+
+
+def hct_series(d1, d2, cfg):
+    """ครรภ์ที่คลอดในช่วง → {anc_id: [{"date", "ga", "hct"}]} เรียงตามวัน
+    ผล lab_order + ผลที่ลงในหน้า ANC · วันเดียวกันใช้ผล lab · ค่าที่ไม่ใช่ % Hct (เกรด / ข้อความ) ตัดทิ้ง"""
+    rows = fetch(HCT_SERIES, {"d1": d1, "d2": d2, "codes": _nonempty(hct_series_labs(cfg)),
+                              "hct": hct_lab_ids(cfg)})
+    by = defaultdict(dict)
+    for r in sorted(rows, key=lambda r: r.get("src") != "lab"):
+        v, d = _float(r.get("v")), _date(r.get("d"))
+        if v is None or d is None or not HCT_RANGE[0] <= v <= HCT_RANGE[1]:
+            continue
+        lmp = _date(r.get("lmp"))
+        by[int(num(r["anc_id"]))].setdefault(d, {"date": d, "ga": (d - lmp).days // 7 if lmp else None, "hct": v})
+    return {a: [x for _, x in sorted(m.items())] for a, m in by.items()}
+
+
 def sti_codes(cfg):
     """({การตรวจ: รหัส lab_items}, {การตรวจ: anc_lab_id}) — ตั้งใน env หรือเลือกจากชื่อรายการ (ตรวจที่หน้า /check)"""
     labs, anc = dict(cfg.sti_labs), dict(cfg.sti_anc_labs)

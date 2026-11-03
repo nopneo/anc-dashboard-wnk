@@ -118,6 +118,26 @@ def _refer_dx(d1, d2, cfg, pregs):
                  f"ทะเบียนฝากครรภ์ถึงหลังคลอด {cfg.postpartum_days} วัน หรือ Dx หลักขึ้นต้นด้วยรหัสที่ตั้ง")
 
 
+def _hct_series(d1, d2, cfg):
+    codes = queries.hct_series_labs(cfg)
+    rows = fetch("""
+select lo.lab_items_code code, li.lab_items_name name, count(*) n,
+       sum(lo.lab_order_result regexp '^[[:space:]]*[0-9]+([.][0-9]+)?[[:space:]]*$') num_ok /* hct_series */
+  from lab_head lh
+  join lab_order lo on lo.lab_order_number = lh.lab_order_number
+  join lab_items li on li.lab_items_code = lo.lab_items_code
+ where lh.order_date between %(d1)s and %(d2)s and lo.lab_items_code in %(codes)s
+ group by lo.lab_items_code, li.lab_items_name""", {"d1": d1, "d2": d2, "codes": tuple(codes) or ("-",)})
+    n = sum(int(num(r.get("n"))) for r in rows)
+    ok_n = sum(int(num(r.get("num_ok"))) for r in rows)
+    p = metrics.pct(ok_n, n)
+    warn = not codes or n == 0 or (p or 0) < 90
+    hint = ("ไม่พบผล Hct จากรหัสที่ใช้ในช่วงนี้ — ตั้ง ANC_HCT_SERIES_LABS เป็นรหัส lab Hct ของ รพ." if n == 0 else
+            f"{n} ผลในช่วง · เป็นตัวเลข {p}% (ที่ไม่ใช่ตัวเลขถูกตัดออก) · ผลที่ลงในหน้า ANC ใช้ ANC_HCT_LAB_IDS")
+    return _item("hct_series", "ติดตามภาวะซีด: ผล Hct หลายครั้ง (LABFU)", ", ".join(codes) or "-", _found(rows),
+                 _status(False, warn), "ANC_HCT_SERIES_LABS · ANC_HCT_CUTOFF_T2 · ANC_HCT_IMPROVE", hint)
+
+
 #: ผลตรวจโรคติดเชื้อที่จัดกลุ่มไม่ได้ (ว่าง / ข้อความอื่น) เกินนี้ (%) → warn
 STI_UNCLEAR_WARN_PCT = 20.0
 #: ชื่อ lab ที่อาจเกี่ยวกับโรคติดเชื้อ — แสดงให้เห็นรายการที่แอปไม่ได้เลือก
@@ -317,6 +337,7 @@ def audit(d1, d2, cfg, pcu_map):
                lambda: _quality_codes(d1, d2, cfg)),
         _guard("thal_codes", "คัดกรองธาลัสซีเมีย", "ANC_THAL_EXPORT_CODES", lambda: _thal(d1, d2, cfg)),
         _guard("outcome_codes", "ผลลัพธ์แม่และทารก", "ANC_ASPHYXIA_APGAR", lambda: _outcome_codes(d1, d2, cfg)),
+        _guard("hct_series", "ติดตามภาวะซีด", "ANC_HCT_SERIES_LABS", lambda: _hct_series(d1, d2, cfg)),
         _guard("sti_codes", "โรคติดเชื้อทางเพศสัมพันธ์", "ANC_STI_*_LABS", lambda: _sti(d1, d2, cfg)),
         _guard("risk27", "คัดกรองครรภ์เสี่ยง 27 ข้อ", "ANC_RISK_DX_* · ANC_RISK_TEXT_*", lambda: _risk27(new, d1, d2, cfg)),
         _pcu_item(new, pcu_map, cfg),

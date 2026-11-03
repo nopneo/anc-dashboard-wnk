@@ -37,6 +37,7 @@ import metrics
 import risk27
 import queries
 import sti
+import anemia
 import store
 from cache import TTLCache
 from config import PcuMapError, load_config, load_village_pcu
@@ -232,6 +233,10 @@ def _risk_hits(d1, d2, cfg):
     return _memo("risk", d1, d2, cfg, lambda: queries.risk_hits(d1, d2, cfg))
 
 
+def _hct(d1, d2, cfg):
+    return _memo("hct", d1, d2, cfg, lambda: queries.hct_series(d1, d2, cfg))
+
+
 def _sti(d1, d2, cfg):
     return _memo("sti", d1, d2, cfg, lambda: queries.sti_results(d1, d2, cfg))
 
@@ -245,7 +250,7 @@ def load_data(d1, d2, cfg):
     pregs, visits, infants, pnc = _main_data(d1, d2, cfg)
     return {"pregs": pregs, "visits": visits, "infants": infants, "pnc": pnc,
             "refers": metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), "risk_hits": _risk_hits(d1, d2, cfg),
-            "sti": _sti(d1, d2, cfg)}
+            "sti": _sti(d1, d2, cfg), "hct": _hct(d1, d2, cfg)}
 
 
 def build_context(d1, d2, scope="area"):
@@ -267,6 +272,8 @@ def build_context(d1, d2, scope="area"):
     new = [p for p in pregs if p.get("register_date") and d1 <= p["register_date"] <= d2]
     risk27_res = _safe(errors, "risk27", lambda: risk27.summarize(new, _risk_hits(d1, d2, cfg), cfg), None)
     sti_res = _safe(errors, "sti", lambda: sti.summarize(new, _sti(d1, d2, cfg), cfg), None)
+    hct_res = _safe(errors, "hct", lambda: anemia.summarize(metrics._delivered(pregs, d1, d2, area),
+                                                             _hct(d1, d2, cfg), cfg), None)
     refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), [])
     refer = metrics.refer_summary(refer_rows, d1, d2)
 
@@ -283,7 +290,8 @@ def build_context(d1, d2, scope="area"):
         "trend": metrics.monthly_trend(pregs, visits, d1, d2),
         "pcu": pcu, "pcu_missing": pcu_map is None and "pcu" not in errors,
         "unmapped": unmapped, "refer": refer,
-        "outcome": outcome, "risk27": risk27_res, "risk_groups": risk27.GROUPS, "sti": sti_res,
+        "outcome": outcome, "risk27": risk27_res, "risk_groups": risk27.GROUPS, "sti": sti_res, "hct": hct_res,
+        "hct_cutoff_t2": cfg.hct_cutoff_t2, "hct_improve": cfg.hct_improve,
         "alerts": metrics.alerts(ind, pcu, age, unmapped, outcome) if "main" not in errors else [],
         "errors": errors, "audited": cfg.data_audited, "cfg_targets": cfg.targets,
         "hct_cutoff": cfg.hct_cutoff, "hct_late_ga": cfg.hct_late_ga, "lbw_grams": cfg.lbw_grams,

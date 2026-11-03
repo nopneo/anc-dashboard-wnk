@@ -27,11 +27,12 @@ def client(monkeypatch, tmp_path):
     return appmod.app.test_client()
 
 
-def _patch(monkeypatch, pregs=(), visits=(), infants=(), refers=(), sti=None):
+def _patch(monkeypatch, pregs=(), visits=(), infants=(), refers=(), sti=None, hct=None):
     monkeypatch.setattr(queries, "pregnancies", lambda d1, d2, cfg: list(pregs))
     monkeypatch.setattr(queries, "visits", lambda ids: list(visits))
     monkeypatch.setattr(queries, "infants", lambda d1, d2, *a: list(infants))
     monkeypatch.setattr(queries, "sti_results", lambda d1, d2, cfg: dict(sti or {}))
+    monkeypatch.setattr(queries, "hct_series", lambda d1, d2, cfg: dict(hct or {}))
     monkeypatch.setattr(queries, "refers", lambda d1, d2: list(refers))
     monkeypatch.setattr(queries, "postnatal", lambda ids: [])
     monkeypatch.setattr(queries, "risk_hits", lambda d1, d2, cfg: {
@@ -49,7 +50,10 @@ def fake_data(monkeypatch):
                "minutes": 70}]
     _patch(monkeypatch, pregs, visits, infants, refers,
            sti={1: {"syphilis": ("pos", "Reactive 1:8"), "hiv": ("neg", "Negative")},
-                2: {"syphilis": ("neg", "Non Reactive"), "hbv": ("unclear", "-")}})
+                2: {"syphilis": ("neg", "Non Reactive"), "hbv": ("unclear", "-")}},
+           hct={1: [{"date": date(2025, 11, 1), "ga": 9, "hct": 29.0}, {"date": date(2026, 3, 1), "ga": 26, "hct": 34.0}],
+                2: [{"date": date(2025, 11, 1), "ga": 9, "hct": 30.0}, {"date": date(2026, 3, 1), "ga": 26, "hct": 30.5}],
+                3: [{"date": date(2025, 11, 1), "ga": 9, "hct": 36.0}]})
 
 
 @pytest.fixture
@@ -334,3 +338,25 @@ def test_sti_failure_isolated(client, fake_data, monkeypatch):
     monkeypatch.setattr(queries, "sti_results", boom)
     html = _html(client)
     assert "ดึงข้อมูลไม่ได้" in html and "ตัวชี้วัดคุณภาพ" in html
+
+
+# ---------- ติดตามภาวะซีด ----------
+
+def test_anemia_trend_panel(client, fake_data):
+    html = _html(client)
+    sec = html[html.index("<h3>ติดตามภาวะซีด"):]
+    sec = sec[:sec.index("</section>")]
+    for label in ("หายซีด", "ซีดไม่ดีขึ้น", "ดีขึ้นแต่ยังซีด", "ซีดใหม่", "เจาะครั้งเดียว", "ยังไม่ได้เจาะ"):
+        assert label in sec, label
+    assert "2/3" in sec                # ในเขต: ครรภ์ที่คลอด 3 ราย (1, 2, 6) เจาะ Hct 2 ราย · รายที่ 3 อยู่นอกเขต
+    assert "29.0" not in html and "HN-SECRET" not in html
+
+
+def test_anemia_trend_failure_isolated(client, fake_data, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(queries, "hct_series", boom)
+    html = _html(client)
+    sec = html[html.index("<h3>ติดตามภาวะซีด"):]
+    assert "ดึงข้อมูลไม่ได้" in sec[:sec.index("</section>")] and "ตัวชี้วัดคุณภาพ" in html
