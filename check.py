@@ -141,7 +141,7 @@ select lo.lab_items_code code, li.lab_items_name name, count(*) n,
 #: ผลตรวจโรคติดเชื้อที่จัดกลุ่มไม่ได้ (ว่าง / ข้อความอื่น) เกินนี้ (%) → warn
 STI_UNCLEAR_WARN_PCT = 20.0
 #: ชื่อ lab ที่อาจเกี่ยวกับโรคติดเชื้อ — แสดงให้เห็นรายการที่แอปไม่ได้เลือก
-STI_CANDIDATES = "vdrl|^rpr|tpha|syphil|hbs|hiv|hcv|hepatitis"
+STI_CANDIDATES = "vdrl|^rpr|tpha|syphil|hbs|hiv|hcv|hepatitis|amphetamine"
 
 
 def _sti(d1, d2, cfg):
@@ -177,8 +177,8 @@ select lo.lab_items_code code, li.lab_items_name name, lo.lab_order_result resul
                       for k, label in sti.LABELS.items())
     hint = " · ".join(notes) + (" — ตรวจรหัส lab ของ รพ. (ตั้ง ANC_STI_*_LABS) หรือแก้การบันทึกผลให้เป็น Reactive/Non-reactive, "
                                 "Positive/Negative" if warn else "")
-    return _item("sti_codes", "โรคติดเชื้อทางเพศสัมพันธ์ (LABFU: VDRL/TPHA · HBs Ag · Anti-HIV)", uses, found,
-                 _status(False, warn), "ANC_STI_SYPHILIS_LABS · ANC_STI_HBV_LABS · ANC_STI_HIV_LABS (+ _ANC_LABS)", hint)
+    return _item("sti_codes", "โรคติดเชื้อทางเพศสัมพันธ์ + ปัสสาวะ Amphetamine (LABFU)", uses, found,
+                 _status(False, warn), "ANC_STI_SYPHILIS_LABS · ANC_STI_HBV_LABS · ANC_STI_HIV_LABS · ANC_STI_AMPH_LABS (+ _ANC_LABS)", hint)
 
 
 def _pcu_item(pregs, pcu_map, cfg):

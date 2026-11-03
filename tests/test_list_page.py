@@ -169,3 +169,14 @@ def test_hct_list_shows_trail_and_change(client, monkeypatch):
     login(client)
     html = page(client, f"/list?k=hct_recovered&{Q}")
     assert html.count('class="row"') == 1 and "29.0 (9) → 34.0 (26)" in html and "+5.0" in html
+
+
+def test_amph_positive_list_shows_result(client, monkeypatch):
+    monkeypatch.setattr(queries, "sti_results", lambda d1, d2, cfg: {
+        1: {"amph": ("pos", "Positive")}, 2: {"amph": ("neg", "Negative")}})
+    appmod._raw._data.clear()
+    login(client)
+    html = page(client, f"/list?k=sti_amph_pos&{Q}")
+    assert html.count('class="row"') == 2 and "ผลตรวจ ปัสสาวะ Amphetamine" in html and "Positive" in html
+    html = page(client, f"/list?k=sti_amph_test&only=out&{Q}")
+    assert html.count('class="row"') == 4                          # 6 รายใหม่ ตรวจแล้ว 2 · ยังไม่ตรวจ 4

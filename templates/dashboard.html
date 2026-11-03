@@ -448,7 +448,7 @@
 
   <!-- ============================================================ 11c. STI -->
   <section class="panel">
-    <div class="ph"><span class="ic">🧪</span><h3>โรคติดเชื้อทางเพศสัมพันธ์</h3>
+    <div class="ph"><span class="ic">🧪</span><h3>โรคติดเชื้อทางเพศสัมพันธ์และสารเสพติด</h3>
       <small>ผล lab ระหว่างตั้งครรภ์ (LMP ถึงวันคลอด) · ฐาน = ฝากครรภ์รายใหม่ในช่วง</small></div>
     <div class="pb">
       {% if d.errors.get('sti') %}<div class="err">⚠ {{ d.errors['sti'] }}</div>
@@ -468,7 +468,7 @@
         {% endfor %}
       </table>
       </div>
-      <p class="note">HOSxP: lab_order (VDRL / TPHA · HBs Ag · Anti-HIV) · person_anc_lab ·
+      <p class="note">HOSxP: lab_order (VDRL / TPHA · HBs Ag · Anti-HIV · Methamphetamine ปัสสาวะ) · person_anc_lab ·
         ผลพิมพ์มือจัดกลุ่มเป็นบวก (Reactive / Positive) · ลบ (Non-reactive / Negative) · ไม่ชัด (ว่าง / Inconclusive / อื่น ๆ — ไม่นับเป็นลบ) ·
         ตรวจหลายครั้งพบบวกครั้งใดนับเป็นบวก · รหัส lab ที่ใช้ดูได้ที่หน้าตรวจข้อมูล</p>
       {% endif %}

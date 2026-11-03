@@ -55,6 +55,7 @@
 | ซิฟิลิส | VDRL / RPR / TPHA | `ANC_STI_SYPHILIS_LABS` · `ANC_STI_SYPHILIS_ANC_LABS` |
 | ไวรัสตับอักเสบบี | HBs Ag | `ANC_STI_HBV_LABS` · `ANC_STI_HBV_ANC_LABS` |
 | HIV | Anti-HIV / HIV Ag | `ANC_STI_HIV_LABS` · `ANC_STI_HIV_ANC_LABS` |
+| ปัสสาวะ Amphetamine | Methamphetamine (รวมรายการ "ฟรี" และ "Confirm") | `ANC_STI_AMPH_LABS` |
 
 ผลพิมพ์มือจัดกลุ่มเป็นบวก (Reactive / Positive) · ลบ (Non-reactive / Negative รวมคำสะกดผิด) · ไม่ชัด (ว่าง / Inconclusive / อื่น ๆ ไม่นับเป็นลบ)
 · ตรวจหลายครั้งพบบวกครั้งใดนับเป็นบวก · หน้า `/check` แสดงรหัสที่ใช้และสัดส่วนผลที่จัดกลุ่มไม่ได้

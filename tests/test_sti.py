@@ -15,6 +15,8 @@ CFG = load_config({})
     ("Reactive titer 1:4", "pos"), ("Rective 1: 4", "pos"), ("Reactive1:64", "pos"), ("Positive", "pos"),
     ("Weakly Positive", "pos"), ("Positive X 3 Day", "pos"), ("Positive (3 วิธี)", "pos"), ("reactive titer 1:8", "pos"),
     ("Inconclusive", "unclear"), ("", "unclear"), (None, "unclear"), ("ดูผล OUT LAB", "unclear"),
+    ("Positve", "pos"), ("Posiitive", "pos"), ("Positive", "pos"),          # Amphetamine พิมพ์ผิดจริงในฐาน
+    ("No Urine", "unclear"), ("สิ่งส่งตรวจเป็นน้ำเปล่า", "unclear"), ("Non Reactive   Negative", "neg"),
 ])
 def test_classify(text, want):
     assert sti.classify(text) == want
@@ -38,14 +40,17 @@ def test_summarize_counts_per_test():
     assert (s["pos"]["num"], s["pos"]["den"], s["pos"]["value"]) == (1, 3, 33.3)
     assert s["unclear"] == 1 and s["untested"] == 2
     assert out["hbv"]["tested"]["num"] == 0 and out["hbv"]["pos"]["value"] is None
-    assert [t["key"] for t in sti.summarize(new, res, CFG)] == ["syphilis", "hbv", "hiv"]
+    assert [t["key"] for t in sti.summarize(new, res, CFG)] == ["syphilis", "hbv", "hiv", "amph"]
 
 
 def test_name_pickers_follow_lab_names():
     labs = [("365", "VDRL ครั้งที่ 1"), ("366", "TPHA"), ("355", "HBs Ag"), ("2244", "HBs Ag ฟรี"),
             ("356", "Anti-HBs"), ("1976", "Hbs Ab (PHA)"), ("362", "Anti-HIV (ไม่ด่วน) ครั้งที่ 1"),
-            ("1978", "Anti-HIV (rapid test)"), ("2048", "HIV-PCR"), ("1951", "Anti-HCV")]
+            ("1978", "Anti-HIV (rapid test)"), ("2048", "HIV-PCR"), ("1951", "Anti-HCV"),
+            ("139", "Methamphetamine"), ("2104", "Methamphetamine ฟรี"), ("952", "Ampicillin เชื้อ 1"),
+            ("81", "Metamyelocyte")]
     got = sti.pick_lab_codes(labs)
-    assert got == {"syphilis": ("365", "366"), "hbv": ("355", "2244"), "hiv": ("362", "1978")}
+    assert got == {"syphilis": ("365", "366"), "hbv": ("355", "2244"), "hiv": ("362", "1978"),
+                   "amph": ("139", "2104")}                    # Ampicillin / Metamyelocyte ต้องไม่ติด
     anc = [("1", "VDRL1"), ("2", "VDRL2"), ("3", "HIV1"), ("4", "HIV2"), ("6", "HCT1")]
-    assert sti.pick_anc_lab_ids(anc) == {"syphilis": (1, 2), "hbv": (), "hiv": (3, 4)}
+    assert sti.pick_anc_lab_ids(anc) == {"syphilis": (1, 2), "hbv": (), "hiv": (3, 4), "amph": ()}

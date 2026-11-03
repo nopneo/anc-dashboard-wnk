@@ -50,7 +50,8 @@ def fake_data(monkeypatch):
                "minutes": 70}]
     _patch(monkeypatch, pregs, visits, infants, refers,
            sti={1: {"syphilis": ("pos", "Reactive 1:8"), "hiv": ("neg", "Negative")},
-                2: {"syphilis": ("neg", "Non Reactive"), "hbv": ("unclear", "-")}},
+                2: {"syphilis": ("neg", "Non Reactive"), "hbv": ("unclear", "-"), "amph": ("pos", "Positive")},
+                3: {"amph": ("neg", "Negative")}},
            hct={1: [{"date": date(2025, 11, 1), "ga": 9, "hct": 29.0}, {"date": date(2026, 3, 1), "ga": 26, "hct": 34.0}],
                 2: [{"date": date(2025, 11, 1), "ga": 9, "hct": 30.0}, {"date": date(2026, 3, 1), "ga": 26, "hct": 30.5}],
                 3: [{"date": date(2025, 11, 1), "ga": 9, "hct": 36.0}]})
@@ -325,7 +326,7 @@ def test_teen_repeat_row_in_indicator_table(client, fake_data):
 def test_sti_panel(client, fake_data):
     html = _html(client)
     sec = html[html.index("<h3>โรคติดเชื้อทางเพศสัมพันธ์"):]
-    for label in ("ซิฟิลิส", "ไวรัสตับอักเสบบี", "HIV"):
+    for label in ("ซิฟิลิส", "ไวรัสตับอักเสบบี", "HIV", "Amphetamine"):
         assert label in sec, label
     assert "2/6" in sec and "1/2" in sec            # ซิฟิลิส: ตรวจ 2 จาก 6 รายใหม่ · บวก 1 จาก 2 ที่ตรวจ
     assert "Reactive 1:8" not in html and "HN-SECRET" not in html    # หน้าแดชบอร์ดไม่มีผลรายคน
@@ -360,3 +361,10 @@ def test_anemia_trend_failure_isolated(client, fake_data, monkeypatch):
     html = _html(client)
     sec = html[html.index("<h3>ติดตามภาวะซีด"):]
     assert "ดึงข้อมูลไม่ได้" in sec[:sec.index("</section>")] and "ตัวชี้วัดคุณภาพ" in html
+
+
+def test_amph_row_counts(client, fake_data):
+    html = _html(client)
+    sec = html[html.index("Amphetamine"):]
+    sec = sec[:sec.index("</tr>")]
+    assert "2/6" in sec and "1/2" in sec           # ตรวจ 2 จาก 6 รายใหม่ · ผลบวก 1 จาก 2 ที่ตรวจ

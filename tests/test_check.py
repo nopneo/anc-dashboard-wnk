@@ -93,8 +93,9 @@ def test_no_wait_check(monkeypatch, data):
 
 
 def test_audit_sti_codes_and_unclear_results(monkeypatch, data):
-    monkeypatch.setattr(queries, "sti_codes", lambda cfg: ({"syphilis": ("365",), "hbv": ("355",), "hiv": ("362",)},
-                                                           {"syphilis": (1,), "hbv": (), "hiv": (3,)}))
+    monkeypatch.setattr(queries, "sti_codes", lambda cfg: ({"syphilis": ("365",), "hbv": ("355",), "hiv": ("362",),
+                                                            "amph": ("139",)},
+                                                           {"syphilis": (1,), "hbv": (), "hiv": (3,), "amph": ()}))
     monkeypatch.setattr(check, "fetch", Router({"lab_order_result": [
         {"code": "365", "name": "VDRL ครั้งที่ 1", "result": "Non Reactive", "n": "90"},
         {"code": "365", "name": "VDRL ครั้งที่ 1", "result": "Reactive 1:8", "n": "2"},

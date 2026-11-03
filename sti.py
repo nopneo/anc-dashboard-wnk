@@ -1,4 +1,5 @@
-"""รายงานโรคติดเชื้อทางเพศสัมพันธ์ในหญิงตั้งครรภ์ (ซิฟิลิส · ไวรัสตับอักเสบบี · HIV) จากผล lab — ฟังก์ชันบริสุทธิ์
+"""รายงานผล lab คัดกรองในหญิงตั้งครรภ์ — โรคติดเชื้อทางเพศสัมพันธ์ (ซิฟิลิส · ไวรัสตับอักเสบบี · HIV) และ
+ปัสสาวะ Amphetamine (Methamphetamine) — ฟังก์ชันบริสุทธิ์ · key amph ใช้กลไกเดียวกัน (ผลบวก = Positive)
 
 ผล lab ของ HOSxP พิมพ์มือ สะกดไม่ตรงกัน ("Non Recative", "Reactive titer 1:8", "Positive 3 Test") จึงจัดกลุ่มเป็น
   pos = Reactive / Positive · neg = Non-reactive / Negative · unclear = ว่าง / Inconclusive / ข้อความอื่น (ไม่นับเป็นลบ)
@@ -15,6 +16,8 @@ TESTS = (
     ("syphilis", "ซิฟิลิส (VDRL / TPHA)", r"^(vdrl|rpr|tpha|syphilis)\b", r"vdrl|rpr|tpha"),
     ("hbv", "ไวรัสตับอักเสบบี (HBs Ag)", r"^hbs\s*ag\b", r"hbs\s*ag"),
     ("hiv", "HIV (Anti-HIV)", r"^(anti-?\s*hiv|hiv\s*ag)\b", r"hiv"),
+    # ชื่อต้องขึ้นต้นด้วย Methamphetamine / Amphetamine (ไม่เอา Ampicillin) · anc_lab ไม่มีรายการนี้ จึงใช้ regex ที่ไม่มีวันตรง
+    ("amph", "ปัสสาวะ Amphetamine (Methamphetamine)", r"^(meth)?amphetamine\b", r"(?!)"),
 )
 LABELS = {k: label for k, label, _, _ in TESTS}
 
