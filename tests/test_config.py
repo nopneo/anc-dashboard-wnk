@@ -10,15 +10,16 @@ def test_defaults():
     assert c.postpartum_days == 42
     assert c.refer_dx_prefixes == ("O", "Z32", "Z33", "Z34", "Z35", "Z36")
     assert c.targets == {"early12": 75, "visit5": 75, "visit8": None, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7,
-                         "postnatal": 75, "quality": 70, "iodine": None, "asphyxia": 25}
-    assert c.wait_from_col == "vsttime" and c.wait_to_col == "service5"
-    assert c.wait_max_min == 240 and c.data_audited is False
+                         "postnatal": 75, "quality": 70, "iodine": None, "asphyxia": 25, "teen_repeat": None}
+    assert c.data_audited is False and not hasattr(c, "wait_from_col")
+    assert c.sti_labs == {"syphilis": (), "hbv": (), "hiv": ()} and c.sti_anc_labs["hiv"] == ()
 
 
-def test_list_and_bad_col():
-    c = load_config({"ANC_DT_VACCINE_CODES": " 201, 101 ,", "ANC_WAIT_TO_COL": "drop table"})
+def test_list_and_sti_codes():
+    c = load_config({"ANC_DT_VACCINE_CODES": " 201, 101 ,", "ANC_STI_HIV_LABS": "362, 1978",
+                     "ANC_STI_SYPHILIS_ANC_LABS": "1,x,2"})
     assert c.dt_codes == ("201", "101")
-    assert c.wait_to_col == "service5"
+    assert c.sti_labs["hiv"] == ("362", "1978") and c.sti_anc_labs["syphilis"] == (1, 2)
 
 
 def test_targets_and_flags_from_env():

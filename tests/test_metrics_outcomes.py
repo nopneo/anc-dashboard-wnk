@@ -70,7 +70,7 @@ def test_alerts_for_outcomes():
     from metrics import alerts, by_age, indicators
     inf = [infant(5)] + [infant(9) for _ in range(9)]
     out = outcomes([preg(1, death_date=date(2026, 3, 5))], inf, [], D1, D2, CFG)
-    al = alerts(indicators([], [], [], [], D1, D2, CFG), [], by_age([], [], D1, D2, CFG), [], out)
+    al = alerts(indicators([], [], [], D1, D2, CFG), [], by_age([], [], D1, D2, CFG), [], out)
     texts = " ".join(a["text"] for a in al)
     assert "มารดาเสียชีวิต 1 ราย" in texts and "ทารกแรกเกิดขาดออกซิเจน 100.0 ต่อ 1,000" in texts
     assert all(a["level"] == "red" for a in al)

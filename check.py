@@ -10,13 +10,11 @@ from datetime import timedelta
 import metrics
 import queries
 import risk27
+import sti
 from db import fetch, num
 
-#: คอลัมน์เวลาที่ใช้มีข้อมูลน้อยกว่านี้ (% ของ visit ANC) → bad และเสนอคอลัมน์อื่น
-TIME_LOW_PCT = 10.0
 #: ครรภ์ที่จับคู่ รพ.สต. ไม่ได้เกินนี้ (%) → warn
 UNMAPPED_WARN_PCT = 5.0
-TIME_COLS = ["vsttime"] + [f"service{i}" for i in range(1, 21)]
 
 
 def _status(bad, warn):
@@ -120,24 +118,47 @@ def _refer_dx(d1, d2, cfg, pregs):
                  f"ทะเบียนฝากครรภ์ถึงหลังคลอด {cfg.postpartum_days} วัน หรือ Dx หลักขึ้นต้นด้วยรหัสที่ตั้ง")
 
 
-def _wait_cols(d1, d2, cfg):
-    cols = ", ".join(f"count(st.{c}) {c}" for c in TIME_COLS)
-    rows = fetch(f"""
-select count(*) total, {cols}
-  from service_time st
- where st.vn in (select vn from person_anc_service where anc_service_date between %(d1)s and %(d2)s)""",
-                 {"d1": d1, "d2": d2})
-    r = rows[0] if rows else {}
-    total = num(r.get("total"))
-    pct = {c: metrics.pct(num(r.get(c)), total) or 0.0 for c in TIME_COLS}
-    used = min(pct[cfg.wait_from_col], pct[cfg.wait_to_col])
-    found = [{"code": c, "name": "", "n": int(num(r.get(c)))} for c in TIME_COLS if num(r.get(c))]
-    best = max((c for c in TIME_COLS if c not in ("vsttime", cfg.wait_from_col)), key=lambda c: pct[c])
-    bad = total > 0 and used < TIME_LOW_PCT
-    hint = (f"คอลัมน์ที่ใช้มีข้อมูล {used}% ของ visit ANC — คอลัมน์ที่มีข้อมูลมากสุดคือ {best} ({pct[best]}%)"
-            if bad else f"คอลัมน์ที่ใช้มีข้อมูล {used}% ของ visit ANC ({int(total)} visit)")
-    return _item("wait_cols", "เวลารอคอย (service_time — นอก 43 แฟ้ม)", f"{cfg.wait_from_col} → {cfg.wait_to_col}",
-                 found, _status(bad, total == 0), "ANC_WAIT_FROM_COL · ANC_WAIT_TO_COL", hint)
+#: ผลตรวจโรคติดเชื้อที่จัดกลุ่มไม่ได้ (ว่าง / ข้อความอื่น) เกินนี้ (%) → warn
+STI_UNCLEAR_WARN_PCT = 20.0
+#: ชื่อ lab ที่อาจเกี่ยวกับโรคติดเชื้อ — แสดงให้เห็นรายการที่แอปไม่ได้เลือก
+STI_CANDIDATES = "vdrl|^rpr|tpha|syphil|hbs|hiv|hcv|hepatitis"
+
+
+def _sti(d1, d2, cfg):
+    labs, anc = queries.sti_codes(cfg)
+    used = {c for k in sti.LABELS for c in labs[k]}
+    rows = fetch("""
+select lo.lab_items_code code, li.lab_items_name name, lo.lab_order_result result, count(*) n
+  from lab_head lh
+  join lab_order lo on lo.lab_order_number = lh.lab_order_number
+  join lab_items li on li.lab_items_code = lo.lab_items_code
+ where lh.order_date between %(d1)s and %(d2)s
+   and (lo.lab_items_code in %(codes)s or lower(li.lab_items_name) regexp %(rx)s)
+ group by lo.lab_items_code, li.lab_items_name, lo.lab_order_result""",
+                 {"d1": d1, "d2": d2, "codes": tuple(used) or ("-",), "rx": STI_CANDIDATES})
+    by_code, names = {}, {}
+    for r in rows:
+        c = str(r.get("code"))
+        names[c] = r.get("name") or ""
+        n, unclear = by_code.get(c, (0, 0))
+        by_code[c] = (n + int(num(r.get("n"))), unclear + (int(num(r.get("n"))) if sti.classify(r.get("result")) == "unclear" else 0))
+    found = sorted(({"code": c, "name": names[c] + ("" if c in used else " (แอปไม่ได้ใช้)"), "n": n}
+                    for c, (n, _) in by_code.items()), key=lambda f: -f["n"])
+    notes, warn = [], False
+    for k, label in sti.LABELS.items():
+        n = sum(by_code.get(str(c), (0, 0))[0] for c in labs[k])
+        unclear = sum(by_code.get(str(c), (0, 0))[1] for c in labs[k])
+        u = metrics.pct(unclear, n)
+        bad_k = not labs[k] or n == 0 or (u or 0) >= STI_UNCLEAR_WARN_PCT
+        warn = warn or bad_k
+        notes.append(f"{label}: " + ("ไม่มีรหัส lab" if not labs[k] else f"{n} ผล ในช่วง · ผลไม่ชัด {u or 0}%")
+                     + (" ⚠" if bad_k else ""))
+    uses = " · ".join(f"{label} " + (", ".join(labs[k]) or "-") + (f" + ANC {', '.join(map(str, anc[k]))}" if anc[k] else "")
+                      for k, label in sti.LABELS.items())
+    hint = " · ".join(notes) + (" — ตรวจรหัส lab ของ รพ. (ตั้ง ANC_STI_*_LABS) หรือแก้การบันทึกผลให้เป็น Reactive/Non-reactive, "
+                                "Positive/Negative" if warn else "")
+    return _item("sti_codes", "โรคติดเชื้อทางเพศสัมพันธ์ (LABFU: VDRL/TPHA · HBs Ag · Anti-HIV)", uses, found,
+                 _status(False, warn), "ANC_STI_SYPHILIS_LABS · ANC_STI_HBV_LABS · ANC_STI_HIV_LABS (+ _ANC_LABS)", hint)
 
 
 def _pcu_item(pregs, pcu_map, cfg):
@@ -169,7 +190,9 @@ def completeness(pregs, infants, d1, d2, pcu_map, cfg):
            _comp("ครรภ์ครบกำหนดที่บันทึกวันคลอด", sum(1 for p in due if p.get("labor_date")), len(due)),
            _comp("ทารกที่มีน้ำหนักแรกเกิด", sum(1 for i in born if i.get("weight")), len(born)),
            _comp("ครรภ์ที่คลอดแล้วมีผล Hct ใกล้คลอด", sum(1 for p in delivered if p.get("hct_late") is not None),
-                 len(delivered), warn=50.0, bad=20.0)]
+                 len(delivered), warn=50.0, bad=20.0),
+           _comp("ครรภ์ที่คลอด/แท้งมีลำดับครรภ์ (preg_no)", sum(1 for p in delivered if p.get("gravida") is not None),
+                 len(delivered))]
     if pcu_map is not None:
         out.append(_comp("ครรภ์ที่จัดเข้า รพ.สต. / เขต รพ. / นอกอำเภอ ได้",
                          sum(1 for p in new if metrics.pcu_of(p.get("village"), pcu_map, cfg) != metrics.UNK), len(new)))
@@ -288,13 +311,13 @@ def audit(d1, d2, cfg, pcu_map):
         _guard("refer_dest", "ปลายทาง refer", "", lambda: _refer_dest(d1, d2)),
         _guard("refer_dx", "refer ที่นับเป็นงานแม่และเด็ก", "ANC_REFER_DX_PREFIXES",
                lambda: _refer_dx(d1, d2, cfg, pregs)),
-        _guard("wait_cols", "เวลารอคอย", "ANC_WAIT_FROM_COL · ANC_WAIT_TO_COL", lambda: _wait_cols(d1, d2, cfg)),
         _guard("dead_dchstts", "สถานะจำหน่ายทารก", "ANC_DEAD_DCHSTTS", lambda: _dchstts(d1, d2, cfg)),
         _guard("iodine_did", "ยาเม็ดที่มีไอโอดีน", "ANC_IODINE_DIDSTD", lambda: _iodine(d1, d2, cfg)),
         _guard("quality_codes", "ฝากครรภ์คุณภาพ: lab / หัตถการ / Dx", "ANC_CBC_LAB_CODES · ANC_DM_LAB_CODES",
                lambda: _quality_codes(d1, d2, cfg)),
         _guard("thal_codes", "คัดกรองธาลัสซีเมีย", "ANC_THAL_EXPORT_CODES", lambda: _thal(d1, d2, cfg)),
         _guard("outcome_codes", "ผลลัพธ์แม่และทารก", "ANC_ASPHYXIA_APGAR", lambda: _outcome_codes(d1, d2, cfg)),
+        _guard("sti_codes", "โรคติดเชื้อทางเพศสัมพันธ์", "ANC_STI_*_LABS", lambda: _sti(d1, d2, cfg)),
         _guard("risk27", "คัดกรองครรภ์เสี่ยง 27 ข้อ", "ANC_RISK_DX_* · ANC_RISK_TEXT_*", lambda: _risk27(new, d1, d2, cfg)),
         _pcu_item(new, pcu_map, cfg),
     ]

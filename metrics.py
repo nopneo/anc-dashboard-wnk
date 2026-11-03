@@ -11,7 +11,7 @@ import calendar
 from collections import defaultdict
 from datetime import timedelta
 
-from config import VISIT8_TARGETS
+from config import TEEN_REPEAT_TARGETS, VISIT8_TARGETS
 
 #: ช่วงอายุครรภ์ (สัปดาห์) ของ ANC ครบ 5 ครั้งตามเกณฑ์ (เอกสาร KPI): ≤12 · 13–<20 · 20–<26 · 26–<32 · 32–40
 GA_BUCKETS = ((0, 12), (13, 19), (20, 25), (26, 31), (32, 40))
@@ -23,10 +23,10 @@ PNC_WINDOWS = ((1, 7), (8, 15), (16, 42))
 QUALITY_PARTS = (("q_cbc", "CBC / Hct / Hb"), ("q_thal", "คัดกรองธาลัสซีเมีย"), ("q_us", "อัลตราซาวด์"),
                  ("q_down", "คัดกรองดาวน์"), ("q_dm", "คัดกรองเบาหวาน"))
 IND_KEYS = ("new", "visits", "per_month", "early12", "visit5", "visit8", "postnatal", "quality", "iodine",
-            "dt", "dental", "anemia", "lbw", "wait")
+            "dt", "dental", "anemia", "lbw", "teen_repeat")
 AGE_GROUPS = ("teen", "repro", "elder")
 #: ตัวชี้วัดที่ค่ายิ่งต่ำยิ่งดี
-LOWER_BETTER = {"anemia", "lbw", "asphyxia"}
+LOWER_BETTER = {"anemia", "lbw", "asphyxia", "teen_repeat"}
 LOW_BASE = 5
 #: ครรภ์ที่ไม่ปิดในทะเบียนเกินนี้ (นับจาก LMP) ไม่ถือว่ากำลังตั้งครรภ์
 MAX_PREG_DAYS = 44 * 7
@@ -157,12 +157,20 @@ def rate_visit5(delivered, vmap, cfg):
     return _rate("visit5", sum(1 for p in delivered if _is_5visit(p, vmap.get(p["anc_id"], []))), len(delivered), cfg)
 
 
-def visit8_target(d2, cfg):
-    """เป้าฝากครรภ์ครบ 8 ครั้ง: ค่าที่ตั้งใน env หรือตามปีงบประมาณของวันสิ้นสุดช่วง (นอกตารางใช้ค่าขอบ)"""
-    if cfg.targets.get("visit8") is not None:
-        return cfg.targets["visit8"]
+def _fy_target(key, table, d2, cfg):
+    """เป้าที่ตั้งใน env หรือตามปีงบประมาณของวันสิ้นสุดช่วง (นอกตารางใช้ค่าขอบ)"""
+    if cfg.targets.get(key) is not None:
+        return cfg.targets[key]
     fy = (d2.year + 1 if d2.month >= 10 else d2.year) + 543
-    return VISIT8_TARGETS[min(max(fy, min(VISIT8_TARGETS)), max(VISIT8_TARGETS))]
+    return table[min(max(fy, min(table)), max(table))]
+
+
+def visit8_target(d2, cfg):
+    return _fy_target("visit8", VISIT8_TARGETS, d2, cfg)
+
+
+def teen_repeat_target(d2, cfg):
+    return _fy_target("teen_repeat", TEEN_REPEAT_TARGETS, d2, cfg)
 
 
 def rate_visit8(delivered, vmap, d2, cfg):
@@ -175,6 +183,23 @@ def rate_visit8(delivered, vmap, d2, cfg):
 
 def rate_flag(key, flag, delivered, cfg):
     return _rate(key, sum(1 for p in delivered if p.get(flag)), len(delivered), cfg)
+
+
+def teen_repeat_base(delivered):
+    """เอกสาร 2.1: ครรภ์ที่สิ้นสุด (คลอด/แท้ง) ในช่วงและแม่อายุ < 20 ปี ณ วันสิ้นสุดครรภ์"""
+    return [p for p in delivered if p.get("age_labor") is not None and p["age_labor"] < 20]
+
+
+def is_repeat(p):
+    return (p.get("gravida") or 0) >= 2
+
+
+def rate_teen_repeat(delivered, d2, cfg):
+    base = teen_repeat_base(delivered)
+    r = _rate("teen_repeat", sum(1 for p in base if is_repeat(p)), len(base), cfg)
+    r["target"] = teen_repeat_target(d2, cfg)
+    r["ok"] = None if r["value"] is None else r["value"] <= r["target"]
+    return r
 
 
 def anemia_base(delivered):
@@ -233,15 +258,12 @@ def quality(delivered, cfg):
     return total, parts
 
 
-def indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=(), area=None):
+def indicators(pregs, visits, infants, d1, d2, cfg, pnc=(), area=None):
     """area = เงื่อนไขตัวหารในเขต (ใช้กับ KPI ที่หารด้วยครรภ์ที่คลอด) · ข้อมูลบริการ / ไอโอดีน (Workload) นับทั้งหมด"""
     vmap = _by_anc(visits)
     delivered = _delivered(pregs, d1, d2, area)
     n_visits = sum(1 for v in visits if not v.get("precare") and _in(v.get("date"), d1, d2))
-    waits = [w for w in waits if w is not None]
     months = months_in_range(d1, d2)
-    wait = _count(round(sum(waits) / len(waits), 1) if waits else None)
-    wait["den"] = len(waits)
     q_total, q_parts = quality(delivered, cfg)
     return {
         "new": _count(sum(1 for p in pregs if _in(p.get("register_date"), d1, d2))),
@@ -258,7 +280,7 @@ def indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=(), area=None):
         "dental": rate_flag("dental", "has_dental", delivered, cfg),
         "anemia": rate_anemia(delivered, cfg),
         "lbw": rate_lbw(infants, d1, d2, cfg),
-        "wait": wait,
+        "teen_repeat": rate_teen_repeat(delivered, d2, cfg),
     }
 
 
@@ -472,14 +494,16 @@ def unmapped_villages(pregs, pcu_map, cfg):
 
 IND_LABELS = {"early12": "ฝากครรภ์ก่อน 12 wk", "visit5": "ANC ครบ 5 ครั้ง", "visit8": "ANC ครบ 8 ครั้ง", "postnatal": "ดูแลหลังคลอดครบ 3 ครั้ง",
               "quality": "ฝากครรภ์คุณภาพ", "iodine": "ยาเม็ดไอโอดีน", "dt": "วัคซีน dT",
-              "dental": "ตรวจช่องปาก", "anemia": "โลหิตจางใกล้คลอด", "lbw": "ทารก LBW"}
+              "dental": "ตรวจช่องปาก", "anemia": "โลหิตจางใกล้คลอด", "lbw": "ทารก LBW",
+              "teen_repeat": "ตั้งครรภ์ซ้ำในวัยรุ่น"}
 _ACTIONS = {"early12": "ค้นหาหญิงตั้งครรภ์ในชุมชนร่วมกับ อสม.", "visit5": "ติดตามนัด ANC ตามช่วงอายุครรภ์",
             "visit8": "นัด ANC ให้ครบ 8 ช่วงอายุครรภ์ (≤12 · 13–20 · 21–26 · 27–30 · 31–34 · 35–36 · 37–38 · 39–40 wk)",
             "postnatal": "นัดเยี่ยมหลังคลอดวันที่ 1–7, 8–15, 16–42 ร่วมกับ รพ.สต.",
             "quality": "ตรวจกิจกรรมที่ขาด (lab / อัลตราซาวด์ / ดาวน์ / เบาหวาน)",
             "iodine": "จ่ายยาเม็ดเสริมไอโอดีนทุกครั้งที่ฝากครรภ์",
             "dt": "ตรวจการบันทึกวัคซีน dT / ฉีดตามนัด", "dental": "ส่งตรวจฟันในวันฝากครรภ์ครั้งแรก",
-            "anemia": "ติดตามยาเสริมธาตุเหล็กและตรวจ Hct ซ้ำ", "lbw": "ทบทวนรายที่คลอดน้ำหนักน้อย"}
+            "anemia": "ติดตามยาเสริมธาตุเหล็กและตรวจ Hct ซ้ำ", "lbw": "ทบทวนรายที่คลอดน้ำหนักน้อย",
+            "teen_repeat": "ให้คำปรึกษาและคุมกำเนิดกึ่งถาวรหลังคลอด/แท้งในวัยรุ่น"}
 
 
 def alerts(ind, pcu_rows, age, unmapped, outcome=None):

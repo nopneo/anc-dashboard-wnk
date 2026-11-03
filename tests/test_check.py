@@ -87,12 +87,29 @@ def test_audit_hct_bad_when_no_results(monkeypatch, data):
     assert _item(check.audit(D1, D2, CFG, None), "hct_lab_ids")["status"] == "bad"
 
 
-def test_audit_wait_col_low_is_bad(monkeypatch, data):
-    row = {"total": "100", "vsttime": "100", **{f"service{i}": "0" for i in range(1, 21)}}
-    row["service3"] = "90"
-    monkeypatch.setattr(check, "fetch", Router({"from service_time": [row]}))
-    it = _item(check.audit(D1, D2, CFG, None), "wait_cols")
-    assert it["status"] == "bad" and "service3" in it["hint"]
+def test_no_wait_check(monkeypatch, data):
+    monkeypatch.setattr(check, "fetch", Router({}))
+    assert not any(i["key"] == "wait_cols" for i in check.audit(D1, D2, CFG, None)["items"])
+
+
+def test_audit_sti_codes_and_unclear_results(monkeypatch, data):
+    monkeypatch.setattr(queries, "sti_codes", lambda cfg: ({"syphilis": ("365",), "hbv": ("355",), "hiv": ("362",)},
+                                                           {"syphilis": (1,), "hbv": (), "hiv": (3,)}))
+    monkeypatch.setattr(check, "fetch", Router({"lab_order_result": [
+        {"code": "365", "name": "VDRL ครั้งที่ 1", "result": "Non Reactive", "n": "90"},
+        {"code": "365", "name": "VDRL ครั้งที่ 1", "result": "Reactive 1:8", "n": "2"},
+        {"code": "355", "name": "HBs Ag", "result": "ดูผล OUT LAB", "n": "30"},
+        {"code": "1951", "name": "Anti-HCV", "result": "Negative", "n": "50"}]}))
+    it = _item(check.audit(D1, D2, CFG, None), "sti_codes")
+    assert it["status"] == "warn"                                   # HBs Ag ผลไม่ชัด 100% · HIV ไม่มีผลในช่วง
+    assert "365" in it["app_uses"] and "ไวรัสตับอักเสบบี" in it["hint"]
+    assert {f["code"] for f in it["found"]} >= {"365", "355"} and "HN-SECRET" not in repr(it)
+
+
+def test_completeness_gravida(monkeypatch, data):
+    monkeypatch.setattr(check, "fetch", Router({}))
+    c = {x["title"]: x for x in check.audit(D1, D2, CFG, None)["completeness"]}
+    assert c["ครรภ์ที่คลอด/แท้งมีลำดับครรภ์ (preg_no)"]["pct"] == 0.0
 
 
 def test_audit_refer_dest_unnamed_and_duplicate(monkeypatch, data):

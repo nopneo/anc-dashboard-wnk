@@ -36,6 +36,7 @@ import render
 import metrics
 import risk27
 import queries
+import sti
 import store
 from cache import TTLCache
 from config import PcuMapError, load_config, load_village_pcu
@@ -222,14 +223,17 @@ def _main_data(d1, d2, cfg):
         pregs = queries.pregnancies(d1, d2, cfg)
         visits = queries.visits([p["anc_id"] for p in pregs])
         infants = queries.infants(d1, d2, cfg.dead_dchstts)
-        waits = queries.waits(d1, d2, cfg)
         pnc = queries.postnatal([p["anc_id"] for p in pregs if p.get("labor_date")])
-        return pregs, visits, infants, waits, pnc
+        return pregs, visits, infants, pnc
     return _memo("main", d1, d2, cfg, fetch)
 
 
 def _risk_hits(d1, d2, cfg):
     return _memo("risk", d1, d2, cfg, lambda: queries.risk_hits(d1, d2, cfg))
+
+
+def _sti(d1, d2, cfg):
+    return _memo("sti", d1, d2, cfg, lambda: queries.sti_results(d1, d2, cfg))
 
 
 def _refers(d1, d2, cfg):
@@ -238,9 +242,10 @@ def _refers(d1, d2, cfg):
 
 def load_data(d1, d2, cfg):
     """ข้อมูลดิบทั้งหมดของช่วง (สำหรับหน้ารายชื่อ) — ส่วนไหนดึงไม่ได้ให้ล้มทั้งหน้า ไม่แสดงรายชื่อที่ขาดไป"""
-    pregs, visits, infants, _, pnc = _main_data(d1, d2, cfg)
+    pregs, visits, infants, pnc = _main_data(d1, d2, cfg)
     return {"pregs": pregs, "visits": visits, "infants": infants, "pnc": pnc,
-            "refers": metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), "risk_hits": _risk_hits(d1, d2, cfg)}
+            "refers": metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), "risk_hits": _risk_hits(d1, d2, cfg),
+            "sti": _sti(d1, d2, cfg)}
 
 
 def build_context(d1, d2, scope="area"):
@@ -254,13 +259,14 @@ def build_context(d1, d2, scope="area"):
         return hit
     errors = {}
 
-    pregs, visits, infants, waits, pnc = _safe(errors, "main", lambda: _main_data(d1, d2, cfg), ([], [], [], [], []))
-    ind = metrics.indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=pnc, area=area)
+    pregs, visits, infants, pnc = _safe(errors, "main", lambda: _main_data(d1, d2, cfg), ([], [], [], []))
+    ind = metrics.indicators(pregs, visits, infants, d1, d2, cfg, pnc=pnc, area=area)
     age = metrics.by_age(pregs, visits, d1, d2, cfg, area=area)
 
     outcome = metrics.outcomes(pregs, infants, [], d1, d2, cfg, area=area)
     new = [p for p in pregs if p.get("register_date") and d1 <= p["register_date"] <= d2]
     risk27_res = _safe(errors, "risk27", lambda: risk27.summarize(new, _risk_hits(d1, d2, cfg), cfg), None)
+    sti_res = _safe(errors, "sti", lambda: sti.summarize(new, _sti(d1, d2, cfg), cfg), None)
     refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), [])
     refer = metrics.refer_summary(refer_rows, d1, d2)
 
@@ -277,7 +283,7 @@ def build_context(d1, d2, scope="area"):
         "trend": metrics.monthly_trend(pregs, visits, d1, d2),
         "pcu": pcu, "pcu_missing": pcu_map is None and "pcu" not in errors,
         "unmapped": unmapped, "refer": refer,
-        "outcome": outcome, "risk27": risk27_res, "risk_groups": risk27.GROUPS,
+        "outcome": outcome, "risk27": risk27_res, "risk_groups": risk27.GROUPS, "sti": sti_res,
         "alerts": metrics.alerts(ind, pcu, age, unmapped, outcome) if "main" not in errors else [],
         "errors": errors, "audited": cfg.data_audited, "cfg_targets": cfg.targets,
         "hct_cutoff": cfg.hct_cutoff, "hct_late_ga": cfg.hct_late_ga, "lbw_grams": cfg.lbw_grams,

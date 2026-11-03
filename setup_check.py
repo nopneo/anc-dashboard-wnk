@@ -27,7 +27,7 @@ sys.path.insert(0, HERE)
 #: ตารางที่แดชบอร์ดอ่าน (spec §3) — ไม่มี = ส่วนที่ใช้ตารางนั้นล้ม
 TABLES = ["person_anc", "person_anc_service", "person_anc_other_precare", "person_anc_lab", "anc_lab", "person",
           "patient", "village", "ovst", "ovst_vaccine", "person_vaccine", "dtmain", "ipt_labour",
-          "ipt_labour_infant", "ipt_newborn", "ipt", "referout", "hospcode", "icd101", "service_time",
+          "ipt_labour_infant", "ipt_newborn", "ipt", "referout", "hospcode", "icd101",
           "person_anc_preg_care", "opitemrece", "drugitems", "lab_head", "lab_order", "lab_items",
           "doctor_operation", "ovstdiag", "thalassaemia_result", "person_anc_risk", "anc_risk", "iptdiag"]
 #: สิทธิ์ที่บัญชีอ่านอย่างเดียวมีได้

@@ -8,6 +8,7 @@ import pytest
 import drill
 import metrics
 import risk27
+import sti
 from config import load_config
 
 CFG = load_config({})
@@ -33,7 +34,9 @@ def dataset(seed):
              "village": rng.choice(VILLAGES), "register_date": reg, "lmp": lmp, "labor_date": labor,
              "hct_late": rng.choice([None, 29.0, 31.0, 33.0, 36.0]), "thai": rng.random() < .9,
              "labour_hospcode": rng.choice([H, H, "10666", None]), "labour_place": "รพ.อื่น",
-             "death_date": (labor or reg) + timedelta(days=3) if rng.random() < .03 else None}
+             "death_date": (labor or reg) + timedelta(days=3) if rng.random() < .03 else None,
+             "gravida": rng.choice([None, 1, 1, 2, 3])}
+        p["age_labor"] = None if p["age"] is None or labor is None else p["age"] + rng.choice([0, 0, 1])
         for f in ("has_dt", "has_dental", "has_iodine", "q_cbc", "q_thal", "q_us", "q_down", "q_dm", "has_risk",
                   "cx_htn", "cx_gdm", "cx_pph", "cx_preterm"):
             p[f] = rng.random() < .6
@@ -67,7 +70,13 @@ def dataset(seed):
             hits["text"][i] = {rng.choice([it["key"] for it in risk27.ITEMS])}
         if rng.random() < .7:
             hits["body"][i] = (rng.choice([None, 140, 150, 160]), rng.choice([None, 40, 55, 80]))
-    return {"pregs": pregs, "visits": visits, "pnc": pnc, "infants": infants, "refers": refers, "risk_hits": hits}
+    res = {}
+    for p in pregs:
+        for key in sti.LABELS:
+            if rng.random() < .6:
+                res.setdefault(p["anc_id"], {})[key] = (rng.choice(["pos", "neg", "neg", "unclear"]), "x")
+    return {"pregs": pregs, "visits": visits, "pnc": pnc, "infants": infants, "refers": refers, "risk_hits": hits,
+            "sti": res}
 
 
 AREAS = {"all": None, "area": lambda p: metrics.in_area(p, CFG)}
@@ -91,10 +100,11 @@ def check_count(data, key, n, area=None, **f):
 @pytest.mark.parametrize("scope", ["all", "area"])
 def test_indicators_match(seed, scope):
     data, area = dataset(seed), AREAS[scope]
-    ind = metrics.indicators(data["pregs"], data["visits"], data["infants"], [], D1, D2, CFG,
+    ind = metrics.indicators(data["pregs"], data["visits"], data["infants"], D1, D2, CFG,
                              pnc=data["pnc"], area=area)
     check_count(data, "new", ind["new"]["value"], area)
-    for key in ("early12", "visit5", "visit8", "postnatal", "quality", "iodine", "dt", "dental", "anemia", "lbw"):
+    for key in ("early12", "visit5", "visit8", "postnatal", "quality", "iodine", "dt", "dental", "anemia", "lbw",
+                "teen_repeat"):
         check_rate(data, key, ind[key], area)
     for part in ind["quality_parts"]:
         check_rate(data, part["key"], part["rate"], area)
@@ -171,3 +181,14 @@ def test_every_key_has_a_label():
 def test_pcu_filter_without_map_does_not_crash():
     m = drill.members("new", dataset(1), D1, D2, CFG, None, None, pcu="03929")
     assert m["rows"] == []
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_sti_match(seed):
+    data = dataset(seed)
+    new = [p for p in data["pregs"] if D1 <= p["register_date"] <= D2]
+    for t in sti.summarize(new, data["sti"], CFG):
+        check_rate(data, f"sti_{t['key']}_test", t["tested"])
+        check_rate(data, f"sti_{t['key']}_pos", t["pos"])
+        m = drill.members(f"sti_{t['key']}_test", data, D1, D2, CFG, None, PCU_MAP)
+        assert sum(1 for _, ok in m["rows"] if ok is False) == t["untested"]

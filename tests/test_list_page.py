@@ -116,3 +116,22 @@ def test_logout_button_shown_on_list(client):
     login(client)
     html = page(client, f"/list?k=new&{Q}")
     assert "พยาบาล 1" in html and 'action="/logout"' in html and _csrf(client) in html
+
+
+def test_sti_list_shows_result_column(client, monkeypatch):
+    monkeypatch.setattr(queries, "sti_results", lambda d1, d2, cfg: {1: {"syphilis": ("pos", "Reactive 1:8")},
+                                                                    2: {"syphilis": ("neg", "Non Reactive")}})
+    appmod._raw._data.clear()
+    login(client)
+    html = page(client, f"/list?k=sti_syphilis_pos&{Q}")
+    assert html.count('class="row"') == 2 and "ผลตรวจ" in html and "Reactive 1:8" in html
+
+
+def test_teen_repeat_list_shows_gravida(client, monkeypatch):
+    pregs = [dict(_preg(1, 17, "30250101"), hn="HN1", age_labor=18, gravida=2),
+             dict(_preg(2, 25, "30250101"), hn="HN2", age_labor=25, gravida=1)]
+    monkeypatch.setattr(queries, "pregnancies", lambda d1, d2, cfg: pregs)
+    appmod._raw._data.clear()
+    login(client)
+    html = page(client, f"/list?k=teen_repeat&{Q}")
+    assert html.count('class="row"') == 1 and "ครรภ์ที่" in html and "อายุ ณ วันสิ้นสุดครรภ์" in html

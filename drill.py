@@ -9,6 +9,7 @@ tests/test_drill.py ตรวจว่าจำนวนแถวเท่าก
 
 import metrics
 import risk27
+import sti
 
 _m = metrics
 
@@ -24,12 +25,15 @@ PREG = {
     "dt": ("ได้วัคซีน dT (ครรภ์ที่คลอดในช่วง)", "ได้ dT"),
     "dental": ("ได้ตรวจช่องปาก (ครรภ์ที่คลอดในช่วง)", "ตรวจแล้ว"),
     "anemia": ("โลหิตจางใกล้คลอด (ครรภ์ที่คลอดและมีผล Hct)", "โลหิตจาง"),
+    "teen_repeat": ("ตั้งครรภ์ซ้ำในหญิงอายุ < 20 ปี (ครรภ์ที่คลอด/แท้งในช่วง)", "ครรภ์ที่ ≥ 2"),
     "preterm": ("คลอดก่อนกำหนด < 37 สัปดาห์ (ครรภ์ที่คลอดและมี LMP)", "ก่อนกำหนด"),
     "place_here": ("สถานที่คลอด (ครรภ์ที่คลอดในช่วง)", "คลอดที่ รพ."),
     "maternal_death": ("มารดาเสียชีวิต", None),
     "open": ("หญิงตั้งครรภ์ที่กำลังติดตาม ณ วันสิ้นสุดช่วง", "≤12 wk"),
     **{k: (f"{label} (ครรภ์ที่คลอดในช่วง)", "ได้") for k, label in metrics.QUALITY_PARTS},
     **{k: (f"ภาวะแทรกซ้อน: {label} (ครรภ์ที่คลอดในช่วง)", "พบ") for k, label in metrics.COMPLICATIONS},
+    **{f"sti_{k}_test": (f"ตรวจ{label} (ฝากครรภ์รายใหม่ในช่วง)", "ตรวจแล้ว") for k, label in sti.LABELS.items()},
+    **{f"sti_{k}_pos": (f"ผลบวก {label} (ฝากครรภ์รายใหม่ที่ได้ตรวจ)", "ผลบวก") for k, label in sti.LABELS.items()},
 }
 INFANT = {
     "lbw": ("ทารกน้ำหนักแรกเกิดน้อย (เกิดมีชีพที่ชั่งน้ำหนัก)", "< 2,500 g"),
@@ -74,7 +78,7 @@ def _r27(key):
 
 
 def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
-    """data = {"pregs", "visits", "infants", "refers" (ผ่าน select_refers แล้ว), "pnc", "risk_hits"}"""
+    """data = {"pregs", "visits", "infants", "refers" (ผ่าน select_refers แล้ว), "pnc", "risk_hits", "sti"}"""
     if key in INFANT:
         return _infants(key, data, d1, d2, cfg, pcu_map, pcu)
     if key in REFER:
@@ -98,6 +102,7 @@ def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
         return {"key": key, "label": label, "kind": "preg", "ok_label": "พบ", "rows": [(p, ok(p)) for p in base]}
 
     flag = lambda f: (lambda p: bool(p.get(f)))
+    st = lambda p, k: sti.status(data.get("sti") or {}, p["anc_id"], k)
     spec = {
         "new": lambda: (new, None),
         "early12": lambda: (delivered, lambda p: metrics.is_early12(p, vs(p))),
@@ -110,12 +115,16 @@ def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
         "dt": lambda: (delivered, flag("has_dt")),
         "dental": lambda: (delivered, flag("has_dental")),
         "anemia": lambda: (metrics.anemia_base(delivered), lambda p: p["hct_late"] < cfg.hct_cutoff),
+        "teen_repeat": lambda: (metrics.teen_repeat_base(delivered), metrics.is_repeat),
         "preterm": lambda: ([p for p in delivered if p.get("lmp")], metrics.is_preterm),
         "place_here": lambda: (delivered, lambda p: p.get("labour_hospcode") == cfg.hospcode),
         "maternal_death": lambda: ([p for p in pregs if metrics.died_in_window(p, d1, d2, cfg)], None),
         "open": lambda: ([p for p in pregs if metrics.pregnant_on(p, d2)], lambda p: metrics.is_early12(p, vs(p))),
         **{k: (lambda k=k: (delivered, flag(k))) for k, _ in metrics.QUALITY_PARTS},
         **{k: (lambda k=k: (delivered, flag(k))) for k, _ in metrics.COMPLICATIONS},
+        **{f"sti_{k}_test": (lambda k=k: (new, lambda p: st(p, k) is not None)) for k in sti.LABELS},
+        **{f"sti_{k}_pos": (lambda k=k: ([p for p in new if st(p, k) is not None], lambda p: st(p, k) == "pos"))
+           for k in sti.LABELS},
     }
     base, ok = spec[key]()
     label, ok_label = PREG[key]

@@ -140,8 +140,6 @@
       <div class="u">{{ L('visit5', k.visit5.num ~ '/' ~ k.visit5.den) }} ราย ที่คลอด</div>{{ kbar(k.visit5) }}</div>
     <div class="kpi k-red"><div class="ic">🚑</div><div class="tt">ส่งต่อ (Refer)</div>
       <div class="v">{{ '—' if rerr else L('refer', fmt(d.refer.total)) }}</div><div class="u">ครั้ง</div></div>
-    <div class="kpi k-cyan"><div class="ic">⌛</div><div class="tt">เวลารอคอยเฉลี่ย</div>
-      <div class="v">{{ fmt(k.wait.value) }}</div><div class="u">นาที · มาถึง → เริ่มตรวจ · {{ fmt(k.wait.den) }} visit</div></div>
   </section>
   <h2 class="src-note">ANC KPI Summary · ภาพรวมงานฝากครรภ์ — ร้อยละคิดจากครรภ์ที่คลอดในช่วง · ขีดเหลือง = เป้า</h2>
 
@@ -216,7 +214,7 @@
     </section>
 
     <section class="panel">
-      {% set tk = ['early12', 'visit5', 'visit8', 'postnatal', 'quality', 'iodine', 'dt', 'dental', 'anemia', 'lbw'] | select('in', k | list) | list %}
+      {% set tk = ['early12', 'visit5', 'visit8', 'postnatal', 'quality', 'iodine', 'dt', 'dental', 'anemia', 'lbw', 'teen_repeat'] | select('in', k | list) | list %}
       {% set tk = tk | reject('equalto', 'iodine') | list if k.iodine.target is none else tk %}
       <div class="ph"><span class="ic">🎯</span><h3>ผลตามเป้า</h3><small>ตัวชี้วัดที่มีเป้า {{ tk | length }} ตัว</small></div>
       <div class="pb">
@@ -256,7 +254,7 @@
         ('dental', 'ตรวจช่องปาก', '%', 'dtmain · person_anc'),
         ('anemia', 'โลหิตจางใกล้คลอด (Hct < ' ~ d.hct_cutoff ~ '% · GA ≥ ' ~ d.hct_late_ga ~ ')', '%', 'person_anc_lab · person_anc'),
         ('lbw', 'ทารก LBW (< ' ~ d.lbw_grams ~ ' g)', '%', 'ipt_labour_infant'),
-        ('wait', 'เวลารอคอยเฉลี่ย', 'นาที', 'service_time'),
+        ('teen_repeat', 'ตั้งครรภ์ซ้ำในหญิงอายุ < 20 ปี (ครรภ์ที่ ≥ 2 · คลอด/แท้งในช่วง) · เป้าตามปีงบ', '%', 'person_anc.preg_no · person_anc.labor_date'),
       ] %}
       <div class="scroll">
       <table class="t">
@@ -266,7 +264,7 @@
           <td>{{ label }} <span class="src">({{ unit }})</span><br><span class="src">HOSxP: {{ src }}</span></td>
           <td class="n">{% if unit == '%' %}{{ rate(r) }}{% else %}<b>{{ fmt(r.value) }}</b>{% endif %}</td>
           <td class="n">{% if r.den is not none and unit == '%' %}{{ L(key, r.num ~ '/' ~ r.den) }}{% else %}—{% endif %}</td>
-          <td class="n">{% if r.target is not none %}{{ '≤' if key in ('anemia', 'lbw') else '≥' }} {{ r.target }}%{% else %}—{% endif %}</td>
+          <td class="n">{% if r.target is not none %}{{ '≤' if key in ('anemia', 'lbw', 'teen_repeat') else '≥' }} {{ r.target }}%{% else %}—{% endif %}</td>
           <td>{% if r.ok is sameas true %}<span class="st ok">ผ่าน</span>{% elif r.ok is sameas false %}<span class="st no">ไม่ผ่าน</span>
               {% elif r.target is not none %}<span class="st na">ไม่มีข้อมูล</span>{% endif %}</td>
         </tr>
@@ -280,6 +278,7 @@
       <p class="hint">{% if d.scope == 'area' %}ตัวหารในเขต = หญิงไทยที่อาศัยในอำเภอ หรืออยู่นอกเขตแต่มาคลอดที่ รพ. ·
         {% endif %}ตัวหาร ≤12 wk / ครบ 5 ครั้ง / คุณภาพ / dT / ช่องปาก = ครรภ์ที่คลอดในช่วง · หลังคลอด = คลอดในช่วงและพ้น 42 วัน ·
         ไอโอดีน = ครรภ์ที่มาฝากครรภ์ที่ รพ. ในช่วง · โลหิตจาง = คลอดและมีผล Hct · LBW = ทารกเกิดมีชีพ ·
+        ตั้งครรภ์ซ้ำในวัยรุ่น = ครรภ์ที่คลอด/แท้งในช่วงและแม่อายุ &lt; 20 ปี ณ วันนั้น ·
         นิยามตามเอกสาร KPI กรมอนามัย / HDC · ค่าจาง = ตัวหารน้อยกว่า 5</p>
       </div>
     </section>
@@ -413,6 +412,35 @@
     </div>
   </section>
 
+  <!-- ============================================================ 11c. STI -->
+  <section class="panel">
+    <div class="ph"><span class="ic">🧪</span><h3>โรคติดเชื้อทางเพศสัมพันธ์</h3>
+      <small>ผล lab ระหว่างตั้งครรภ์ (LMP ถึงวันคลอด) · ฐาน = ฝากครรภ์รายใหม่ในช่วง</small></div>
+    <div class="pb">
+      {% if d.errors.get('sti') %}<div class="err">⚠ {{ d.errors['sti'] }}</div>
+      {% elif d.sti %}
+      <div class="scroll">
+      <table class="t">
+        <tr><th>การตรวจ</th><th class="n">ได้ตรวจ</th><th class="n">ร้อยละ</th><th class="n">ผลบวก</th>
+          <th class="n">ร้อยละผลบวก</th><th class="n">ผลไม่ชัด</th><th class="n">ยังไม่ได้ตรวจ</th></tr>
+        {% for t in d.sti %}
+        <tr><td>{{ t.label }}</td>
+          <td class="n">{{ L('sti_' ~ t.key ~ '_test', t.tested.num ~ '/' ~ t.tested.den) }}</td>
+          <td class="n">{{ rate(t.tested) }}</td>
+          <td class="n">{% if t.pos.num %}<b class="bad">{{ L('sti_' ~ t.key ~ '_pos', t.pos.num ~ '/' ~ t.pos.den, only='in') }}</b>{% else %}{{ L('sti_' ~ t.key ~ '_pos', t.pos.num ~ '/' ~ t.pos.den) }}{% endif %}</td>
+          <td class="n">{{ rate(t.pos) }}</td>
+          <td class="n">{{ t.unclear }}</td>
+          <td class="n">{{ L('sti_' ~ t.key ~ '_test', t.untested, only='out') }}</td></tr>
+        {% endfor %}
+      </table>
+      </div>
+      <p class="note">HOSxP: lab_order (VDRL / TPHA · HBs Ag · Anti-HIV) · person_anc_lab ·
+        ผลพิมพ์มือจัดกลุ่มเป็นบวก (Reactive / Positive) · ลบ (Non-reactive / Negative) · ไม่ชัด (ว่าง / Inconclusive / อื่น ๆ — ไม่นับเป็นลบ) ·
+        ตรวจหลายครั้งพบบวกครั้งใดนับเป็นบวก · รหัส lab ที่ใช้ดูได้ที่หน้าตรวจข้อมูล</p>
+      {% endif %}
+    </div>
+  </section>
+
   <!-- ============================================================ 6. refer monthly -->
   <div class="grid">
     <section class="panel">
@@ -540,7 +568,7 @@
     <span class="chips"><span>ติดต่อ: {{ contact }}</span><span>ผู้พัฒนา: {{ dev_contact }}</span></span>
   </footer>
   <p class="src-note">แหล่งข้อมูล HOSxP (อ่านอย่างเดียว): person_anc · person_anc_service · person_anc_other_precare · person_anc_lab ·
-    ovst_vaccine · dtmain · ipt_labour_infant · referout · service_time — หน้านี้แสดงเฉพาะจำนวนนับ{% if list_on %} · รายชื่อเบื้องหลังตัวเลขดูได้เมื่อเข้าสู่ระบบ (บันทึกการเปิดดูทุกครั้ง){% endif %}</p>
+    ovst_vaccine · dtmain · ipt_labour_infant · referout · lab_order — หน้านี้แสดงเฉพาะจำนวนนับ{% if list_on %} · รายชื่อเบื้องหลังตัวเลขดูได้เมื่อเข้าสู่ระบบ (บันทึกการเปิดดูทุกครั้ง){% endif %}</p>
 </div>
 
 {% if not print_mode %}

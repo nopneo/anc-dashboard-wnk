@@ -37,8 +37,21 @@
 | ตรวจช่องปาก | ตรวจฟันระหว่างตั้งครรภ์ ÷ ครรภ์ที่คลอด | DENTAL | `dtmain.pregnancy='Y'`, `person_anc.dental_tx_date` |
 | โลหิตจางใกล้คลอด | Hct < 33% ที่ GA ≥ 28 ÷ ครรภ์ที่คลอดและมีผล | PRENATAL.HCT_RESULT | `person_anc_lab`, `person_anc.blood_hct_result` |
 | ทารก LBW | น้ำหนักแรกเกิด < 2,500 g ÷ เกิดมีชีพใน รพ. | NEWBORN.BWEIGHT | `ipt_labour_infant` |
-| เวลารอคอยเฉลี่ย | มาถึง → เริ่มตรวจ (นาที) | **นอก 43 แฟ้ม** | `service_time` |
+| ตั้งครรภ์ซ้ำในหญิงอายุ < 20 ปี (เอกสาร 2.1) | ครรภ์ที่ ≥ 2 ÷ ครรภ์ที่สิ้นสุด (คลอด/แท้ง) ในช่วงและแม่อายุ < 20 ปี ณ วันนั้น · ยิ่งต่ำยิ่งดี | ตามปีงบ: 2567 = 13 · 2568 = 12.5 · **2569 = 12** · 2570 = 11.5 (ตั้งเองด้วย `ANC_TARGET_TEEN_REPEAT`) | LABOR.GRAVIDA / BDATE | `person_anc.preg_no`, `person_anc.labor_date` |
 | Refer | อยู่ในทะเบียนฝากครรภ์ช่วง LMP ถึงหลังคลอด 42 วัน **หรือ** Dx หลัก O00–O99 / Z32–Z36 | REFER_HISTORY | `referout` |
+
+## โรคติดเชื้อทางเพศสัมพันธ์
+
+ฐาน = ฝากครรภ์รายใหม่ในช่วง · ผล lab ระหว่าง LMP ถึงวันคลอด จาก `lab_order` และ `person_anc_lab`
+
+| การตรวจ | lab (ค่าเริ่มต้นเลือกจากชื่อ) | env |
+|---|---|---|
+| ซิฟิลิส | VDRL / RPR / TPHA | `ANC_STI_SYPHILIS_LABS` · `ANC_STI_SYPHILIS_ANC_LABS` |
+| ไวรัสตับอักเสบบี | HBs Ag | `ANC_STI_HBV_LABS` · `ANC_STI_HBV_ANC_LABS` |
+| HIV | Anti-HIV / HIV Ag | `ANC_STI_HIV_LABS` · `ANC_STI_HIV_ANC_LABS` |
+
+ผลพิมพ์มือจัดกลุ่มเป็นบวก (Reactive / Positive) · ลบ (Non-reactive / Negative รวมคำสะกดผิด) · ไม่ชัด (ว่าง / Inconclusive / อื่น ๆ ไม่นับเป็นลบ)
+· ตรวจหลายครั้งพบบวกครั้งใดนับเป็นบวก · หน้า `/check` แสดงรหัสที่ใช้และสัดส่วนผลที่จัดกลุ่มไม่ได้
 
 ## คัดกรองครรภ์เสี่ยง 27 ข้อ
 

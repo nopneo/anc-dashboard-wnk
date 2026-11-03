@@ -27,11 +27,11 @@ def client(monkeypatch, tmp_path):
     return appmod.app.test_client()
 
 
-def _patch(monkeypatch, pregs=(), visits=(), infants=(), waits=(), refers=()):
+def _patch(monkeypatch, pregs=(), visits=(), infants=(), refers=(), sti=None):
     monkeypatch.setattr(queries, "pregnancies", lambda d1, d2, cfg: list(pregs))
     monkeypatch.setattr(queries, "visits", lambda ids: list(visits))
     monkeypatch.setattr(queries, "infants", lambda d1, d2, *a: list(infants))
-    monkeypatch.setattr(queries, "waits", lambda d1, d2, cfg: list(waits))
+    monkeypatch.setattr(queries, "sti_results", lambda d1, d2, cfg: dict(sti or {}))
     monkeypatch.setattr(queries, "refers", lambda d1, d2: list(refers))
     monkeypatch.setattr(queries, "postnatal", lambda ids: [])
     monkeypatch.setattr(queries, "risk_hits", lambda d1, d2, cfg: {
@@ -47,7 +47,9 @@ def fake_data(monkeypatch):
     refers = [{"refer_id": 1, "date": date(2026, 3, 2), "hn": "HN-SECRET", "pdx": "O149", "dx_name": "Pre-eclampsia",
                "dest": "10666", "dest_name": "รพ.มหาราชนครราชสีมา", "age": 25, "village": "30250101",
                "minutes": 70}]
-    _patch(monkeypatch, pregs, visits, infants, [25, 35], refers)
+    _patch(monkeypatch, pregs, visits, infants, refers,
+           sti={1: {"syphilis": ("pos", "Reactive 1:8"), "hiv": ("neg", "Negative")},
+                2: {"syphilis": ("neg", "Non Reactive"), "hbv": ("unclear", "-")}})
 
 
 @pytest.fixture
@@ -301,3 +303,34 @@ def test_risk27_failure_shows_error_not_zeros(client, fake_data, monkeypatch):
     html = _html(client)
     assert "คัดกรองครรภ์เสี่ยง 27 ข้อ" in html and "⚠" in html
     assert "4/6 รายใหม่" not in html
+
+
+# ---------- ตั้งครรภ์ซ้ำในวัยรุ่น · เวลารอคอย · โรคติดเชื้อทางเพศสัมพันธ์ ----------
+
+def test_wait_time_removed(client, fake_data):
+    html = _html(client)
+    assert "เวลารอคอย" not in html and "service_time" not in html
+
+
+def test_teen_repeat_row_in_indicator_table(client, fake_data):
+    html = _html(client)
+    table = html[html.index("ตัวชี้วัดคุณภาพ"):html.index("Refer Destinations")]
+    assert "ตั้งครรภ์ซ้ำในหญิงอายุ &lt; 20 ปี" in table and "≤ 12" in table
+
+
+def test_sti_panel(client, fake_data):
+    html = _html(client)
+    sec = html[html.index("<h3>โรคติดเชื้อทางเพศสัมพันธ์"):]
+    for label in ("ซิฟิลิส", "ไวรัสตับอักเสบบี", "HIV"):
+        assert label in sec, label
+    assert "2/6" in sec and "1/2" in sec            # ซิฟิลิส: ตรวจ 2 จาก 6 รายใหม่ · บวก 1 จาก 2 ที่ตรวจ
+    assert "Reactive 1:8" not in html and "HN-SECRET" not in html    # หน้าแดชบอร์ดไม่มีผลรายคน
+
+
+def test_sti_failure_isolated(client, fake_data, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(queries, "sti_results", boom)
+    html = _html(client)
+    assert "ดึงข้อมูลไม่ได้" in html and "ตัวชี้วัดคุณภาพ" in html

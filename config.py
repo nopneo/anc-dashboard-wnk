@@ -6,7 +6,6 @@
 
 import csv
 import os
-import re
 from dataclasses import dataclass, field
 
 try:
@@ -20,18 +19,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 import risk27  # noqa: E402  (ค่าเริ่มต้นของคัดกรองครรภ์เสี่ยง 27 ข้อ)
 
-#: คอลัมน์เวลาใน service_time ที่ยอมให้ใส่ลง SQL ได้ (ชื่อคอลัมน์ส่งเป็นพารามิเตอร์ไม่ได้)
-_TIME_COL = re.compile(r"vsttime|service([1-9]|1[0-9]|20)")
-
 #: เป้าหมายตัวชี้วัด (%) · anemia และ lbw ยิ่งต่ำยิ่งดี
 TARGET_DEFAULTS = {"early12": 75, "visit5": 75, "visit8": None, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7,
                    # เอกสาร KPI: หลังคลอด 3 ครั้ง ≥75 · ฝากครรภ์คุณภาพ (HDC) ปีงบ 2570 ≥70 · ไอโอดีนไม่กำหนดเป้า
                    "postnatal": 75, "quality": 70, "iodine": None,
                    # ทารกแรกเกิดขาดออกซิเจน ไม่เกิน 25 ต่อ 1,000 เกิดมีชีพ (ตัวชี้วัดกระทรวง)
-                   "asphyxia": 25}
+                   "asphyxia": 25,
+                   # ตั้งครรภ์ซ้ำในหญิงอายุ < 20 ปี (เอกสาร 2.1) ไม่ตั้ง = ตามปีงบ (TEEN_REPEAT_TARGETS)
+                   "teen_repeat": None}
 
 #: เป้าฝากครรภ์ครบ 8 ครั้ง (เอกสาร 1.7) ตามปีงบประมาณ พ.ศ. — ตั้งเป้าเองด้วย ANC_TARGET_VISIT8 (ไม่ตั้ง = ใช้ตารางนี้)
 VISIT8_TARGETS = {2566: 50, 2567: 55, 2568: 60, 2569: 65, 2570: 70}
+#: เป้าตั้งครรภ์ซ้ำในหญิงอายุ < 20 ปี (เอกสาร 2.1, ยิ่งต่ำยิ่งดี) ตามปีงบประมาณ พ.ศ. — ตั้งเองด้วย ANC_TARGET_TEEN_REPEAT
+TEEN_REPEAT_TARGETS = {2567: 13.0, 2568: 12.5, 2569: 12.0, 2570: 11.5}
+#: การตรวจโรคติดเชื้อทางเพศสัมพันธ์ (sti.py) — รหัส lab ต่อการตรวจตั้งด้วย ANC_STI_<KEY>_LABS / ANC_STI_<KEY>_ANC_LABS
+STI_KEYS = ("syphilis", "hbv", "hiv")
 
 #: ยาเม็ดที่มีไอโอดีน (รหัสยา 24 หลัก DIDSTD ตามเอกสาร KPI: Triferdine 150, Obimin-az, Iodine GPO,
 #: Nataral, Nataral EF, Prenamed, Iolic)
@@ -82,9 +84,9 @@ class Config:
     risk_text: dict = field(default_factory=lambda: dict(risk27.DEFAULT_TEXT))
     postpartum_days: int = 42
     refer_dx_prefixes: tuple = ("O", "Z32", "Z33", "Z34", "Z35", "Z36")
-    wait_from_col: str = "vsttime"
-    wait_to_col: str = "service5"
-    wait_max_min: int = 240
+    #: {การตรวจ: รหัส lab_items} / {การตรวจ: anc_lab_id} · ว่าง = เลือกจากชื่อรายการ (sti.pick_*)
+    sti_labs: dict = field(default_factory=dict)
+    sti_anc_labs: dict = field(default_factory=dict)
     targets: dict = field(default_factory=lambda: dict(TARGET_DEFAULTS))
     village_csv: str = os.path.join(HERE, "village_pcu.csv")
     chwpart: str = "30"
@@ -112,11 +114,6 @@ def _num(v, default):
     except (TypeError, ValueError):
         return default
     return int(f) if f == int(f) else f
-
-
-def _col(v, default):
-    v = (v or "").strip()
-    return v if _TIME_COL.fullmatch(v) else default
 
 
 def load_config(env=os.environ):
@@ -152,9 +149,9 @@ def load_config(env=os.environ):
         risk_text={k: (g(f"ANC_RISK_TEXT_{k.upper()}") or "").strip() or v for k, v in risk27.DEFAULT_TEXT.items()},
         postpartum_days=int(_num(g("ANC_POSTPARTUM_DAYS"), d.postpartum_days)),
         refer_dx_prefixes=tuple(x.upper() for x in _list(g("ANC_REFER_DX_PREFIXES"))) or d.refer_dx_prefixes,
-        wait_from_col=_col(g("ANC_WAIT_FROM_COL"), d.wait_from_col),
-        wait_to_col=_col(g("ANC_WAIT_TO_COL"), d.wait_to_col),
-        wait_max_min=int(_num(g("ANC_WAIT_MAX_MIN"), d.wait_max_min)),
+        sti_labs={k: _list(g(f"ANC_STI_{k.upper()}_LABS")) for k in STI_KEYS},
+        sti_anc_labs={k: tuple(int(x) for x in _list(g(f"ANC_STI_{k.upper()}_ANC_LABS")) if x.isdigit())
+                      for k in STI_KEYS},
         targets={k: _num(g(f"ANC_TARGET_{k.upper()}" if k != "visit5" else "ANC_TARGET_5VISIT"), v)
                  for k, v in TARGET_DEFAULTS.items()},
         village_csv=path if os.path.isabs(path) else os.path.join(HERE, path),

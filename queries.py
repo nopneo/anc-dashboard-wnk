@@ -2,6 +2,7 @@
 
 ตาราง HOSxP ↔ แฟ้ม 43 ที่สอดคล้อง (ตรวจกับฐานจริง 1 พ.ย. 2569)
   person_anc                  ↔ PRENATAL     ทะเบียนครรภ์ 1 แถว/ครรภ์ (LMP, วันคลอด, ผล Hct, วันที่ได้ dT)
+                              ↔ LABOR        วันสิ้นสุดครรภ์ labor_date (คลอด/แท้ง) · GRAVIDA = preg_no
   person_anc_service          ↔ ANC          visit ฝากครรภ์ที่ รพ. (pa_week = GA)
   person_anc_other_precare    ↔ ANC          ฝากครรภ์ที่หน่วยบริการอื่น (นับครบ 5 ครั้ง / ก่อน 12 wk)
   person_anc_lab + anc_lab    ↔ PRENATAL.HCT_RESULT
@@ -9,9 +10,9 @@
   dtmain.pregnancy='Y'        ↔ DENTAL (DENTTYPE = หญิงตั้งครรภ์)
   ipt_labour(_infant)         ↔ LABOR / NEWBORN.BWEIGHT
   referout                    ↔ REFER_HISTORY
-  service_time                — ไม่มีใน 43 แฟ้ม (เวลารอคอย)
   opitemrece + drugitems.did  ↔ DRUG_OPD.DIDSTD   ยาเม็ดที่มีไอโอดีน
   lab_head + lab_order        ↔ LABFU            CBC/Hct/Hb · คัดกรองเบาหวาน (ฝากครรภ์คุณภาพ)
+                                                 VDRL/TPHA · HBs Ag · Anti-HIV (โรคติดเชื้อทางเพศสัมพันธ์)
   doctor_operation.icd9       ↔ PROCEDURE_OPD    อัลตราซาวด์ 88.78
   ovstdiag.icd10              ↔ DIAGNOSIS_OPD    คัดกรองดาวน์ Z36.0/Z36.2 · เบาหวาน Z13.1
   person_anc_preg_care        ↔ POSTNATAL        ดูแลหลังคลอด
@@ -20,10 +21,12 @@
 """
 
 import re
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 import risk27
-from config import village_code
+import sti
+from config import STI_KEYS, village_code
 from db import fetch, num
 
 #: ครรภ์ที่ลงทะเบียนก่อนต้นช่วงเกินนี้ คลอดในช่วงไม่ได้แล้ว
@@ -95,6 +98,7 @@ def _nonempty(t):
 PREGNANCIES = """
 select a.person_anc_id anc_id, pt.hn,
        timestampdiff(year, coalesce(pt.birthday, pe.birthdate), a.anc_register_date) age,
+       timestampdiff(year, coalesce(pt.birthday, pe.birthdate), a.labor_date) age_labor, a.preg_no gravida,
        coalesce(nullif(pt.nationality, ''), pe.nationality) nationality, a.labour_hospcode,
        pt.chwpart, pt.amppart, pt.tmbpart, pt.moopart, v.village_code v_code,
        a.anc_register_date register_date, a.lmp, a.labor_date,
@@ -184,6 +188,7 @@ def pregnancies(d1, d2, cfg):
     out = []
     for r in fetch(PREGNANCIES, args):
         out.append({"anc_id": int(num(r["anc_id"])), "hn": r.get("hn"), "age": _int_or_none(r.get("age")),
+                    "age_labor": _int_or_none(r.get("age_labor")), "gravida": _int_or_none(r.get("gravida")),
                     "village": _village(r), "register_date": _date(r.get("register_date")),
                     "lmp": _date(r.get("lmp")), "labor_date": _date(r.get("labor_date")),
                     "hct_late": _float(r.get("hct_lab")) or _float(r.get("hct_anc")),
@@ -263,24 +268,6 @@ def infants(d1, d2, dead_dchstts=("08", "09")):
              "asphyxia": str(r.get("asphyxia") or "").strip().upper() == "Y",
              "delivery_type": (str(r.get("delivery_type") or "").strip() or None), "hn": r.get("hn")}
             for r in fetch(INFANTS, {"d1": d1, "d2": d2, "dead": dead})]
-
-
-def waits(d1, d2, cfg):
-    # ชื่อคอลัมน์ผ่าน whitelist ใน config แล้ว (vsttime / service1–20) จึงใส่ลง SQL ได้
-    a, b = cfg.wait_from_col, cfg.wait_to_col
-    sql = f"""
-select timestampdiff(minute, timestamp(st.vstdate, st.{a}), timestamp(st.vstdate, st.{b})) m
-  from service_time st
- where st.vn in (select vn from person_anc_service
-                  where anc_service_date between %(d1)s and %(d2)s and vn is not null and vn <> '')
-   and st.{a} is not null and st.{b} is not null
-"""
-    out = []
-    for r in fetch(sql, {"d1": d1, "d2": d2}):
-        m = num(r.get("m"), None)
-        if m is not None and 0 < m <= cfg.wait_max_min:
-            out.append(m)
-    return out
 
 
 REFERS = """
@@ -410,6 +397,56 @@ select q.anc_id,
 def risk_hits(d1, d2, cfg):
     t = risk_text_hits(d1, d2, cfg)
     return {"form": risk_form_hits(d1, d2), "dx": risk_dx_hits(d1, d2, cfg), "text": t["text"], "body": t["body"]}
+
+
+def sti_codes(cfg):
+    """({การตรวจ: รหัส lab_items}, {การตรวจ: anc_lab_id}) — ตั้งใน env หรือเลือกจากชื่อรายการ (ตรวจที่หน้า /check)"""
+    labs, anc = dict(cfg.sti_labs), dict(cfg.sti_anc_labs)
+    if not all(labs.get(k) for k in STI_KEYS):
+        picked = sti.pick_lab_codes([(r.get("code"), r.get("name"))
+                                     for r in fetch("select lab_items_code code, lab_items_name name from lab_items")])
+        labs = {k: labs.get(k) or picked[k] for k in STI_KEYS}
+    if not all(anc.get(k) for k in STI_KEYS):
+        picked = sti.pick_anc_lab_ids([(r.get("code"), r.get("name"))
+                                       for r in fetch("select anc_lab_id code, anc_lab_code name from anc_lab")])
+        anc = {k: anc.get(k) or picked[k] for k in STI_KEYS}
+    return labs, anc
+
+
+STI_RESULTS = """
+select a.person_anc_id anc_id, lo.lab_items_code code, lo.lab_order_result result
+  from person_anc a
+  join person pe on pe.person_id = a.person_id
+  join patient pt on pt.hn = coalesce(nullif(pe.patient_hn, ''),
+        (select p2.hn from patient p2 where p2.cid = pe.cid and pe.cid <> '' limit 1))
+  join lab_head lh on lh.hn = pt.hn
+  join lab_order lo on lo.lab_order_number = lh.lab_order_number
+ where a.anc_register_date between %(d1)s and %(d2)s
+   and lo.lab_items_code in %(codes)s
+   and lh.order_date between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s)
+union all
+select s.person_anc_id, concat('anc:', l.anc_lab_id), l.anc_lab_result
+  from person_anc_lab l
+  join person_anc_service s on s.person_anc_service_id = l.person_anc_service_id
+  join person_anc a on a.person_anc_id = s.person_anc_id
+ where a.anc_register_date between %(d1)s and %(d2)s and l.anc_lab_id in %(anc_ids)s
+"""
+
+
+def sti_results(d1, d2, cfg):
+    """ครรภ์รายใหม่ในช่วง → {anc_id: {การตรวจ: (pos/neg/unclear, ข้อความผล)}} · ไม่มีผล = ไม่มี key (ยังไม่ได้ตรวจ)
+    ผลจาก lab_order (LMP ถึงวันคลอด) และผลที่ลงในหน้า ANC (person_anc_lab)"""
+    labs, anc = sti_codes(cfg)
+    test_of = {str(c): k for k in STI_KEYS for c in labs[k]}
+    test_of.update({f"anc:{i}": k for k in STI_KEYS for i in anc[k]})
+    got = defaultdict(lambda: defaultdict(list))
+    rows = fetch(STI_RESULTS, {"d1": d1, "d2": d2, "codes": _nonempty(c for k in STI_KEYS for c in labs[k]),
+                               "anc_ids": tuple(i for k in STI_KEYS for i in anc[k]) or (-1,)})
+    for r in rows:
+        k = test_of.get(str(r.get("code") or ""))
+        if k:
+            got[int(num(r["anc_id"]))][k].append((sti.classify(r.get("result")), r.get("result")))
+    return {a: {k: sti.merge(v) for k, v in t.items()} for a, t in got.items()}
 
 
 NAMES = "select hn, pname, fname, lname, addrpart, moopart from patient where hn in %(hns)s"

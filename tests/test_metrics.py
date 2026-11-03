@@ -20,8 +20,8 @@ def visit(anc_id, ga, lmp=LMP, precare=False, d=None):
             "precare": precare}
 
 
-def run(pregs, visits=(), infants=(), waits=()):
-    return indicators(list(pregs), list(visits), list(infants), list(waits), D1, D2, CFG)
+def run(pregs, visits=(), infants=(), cfg=CFG):
+    return indicators(list(pregs), list(visits), list(infants), D1, D2, cfg)
 
 
 def test_age_groups():
@@ -96,19 +96,19 @@ def test_lbw_live_births_only():
     assert (r["num"], r["den"], r["value"]) == (1, 2, 50.0)
 
 
-def test_counts_new_visits_per_month_wait():
+def test_counts_new_visits_per_month():
     pregs = [preg(1, reg=date(2026, 2, 1)), preg(2, reg=date(2025, 12, 31)), preg(3, reg=date(2026, 6, 30))]
     visits = [visit(1, 10, d=date(2026, 2, 1)), visit(1, 14, d=date(2026, 3, 1)),
               visit(2, 20, d=date(2025, 12, 31)), visit(1, 9, precare=True, d=date(2026, 1, 20))]
-    r = run(pregs, visits, waits=[10, 20, 31])
+    r = run(pregs, visits)
     assert r["new"]["value"] == 2 and r["visits"]["value"] == 2
     assert r["per_month"]["value"] == round(2 / 6, 1)
-    assert r["wait"]["value"] == 20.3 and r["wait"]["den"] == 3
+    assert "wait" not in r
 
 
 def test_zero_denominator_is_none():
     r = run([])
-    assert r["early12"]["value"] is None and r["early12"]["ok"] is None and r["wait"]["value"] is None
+    assert r["early12"]["value"] is None and r["early12"]["ok"] is None
     assert r["lbw"]["value"] is None and r["new"]["value"] == 0
 
 
@@ -167,7 +167,7 @@ def test_postnatal_three_windows():
     lab = date(2026, 3, 1)
     p = [preg(1, labor=lab), preg(2, labor=lab), preg(3, labor=lab), preg(4, labor=date(2026, 6, 20))]
     pnc = [{"anc_id": 1, "date": lab + timedelta(days=d)} for d in (3, 10, 30)] +           [{"anc_id": 2, "date": lab + timedelta(days=d)} for d in (0, 10, 30)] +           [{"anc_id": 3, "date": lab + timedelta(days=d)} for d in (7, 8, 42)] +           [{"anc_id": 4, "date": date(2026, 6, 22)}]
-    r = indicators(p, [], [], [], D1, D2, CFG, pnc=pnc)["postnatal"]
+    r = indicators(p, [], [], D1, D2, CFG, pnc=pnc)["postnatal"]
     # ครรภ์ 4 คลอด 20 มิ.ย. ยังไม่พ้น 42 วัน ณ 30 มิ.ย. → ไม่อยู่ในตัวหาร · ครรภ์ 2 วันที่ 0 ไม่นับ
     assert (r["num"], r["den"], r["target"]) == (2, 3, 75)
 
@@ -178,7 +178,7 @@ def test_iodine_among_anc_attenders():
     p[3]["has_iodine"] = True
     v = [visit(1, 10, d=date(2026, 2, 1)), visit(2, 10, d=date(2026, 2, 1)),
          visit(3, 9, precare=True, d=date(2026, 2, 1)), visit(4, 10, d=date(2025, 12, 1))]
-    r = indicators(p, v, [], [], D1, D2, CFG)["iodine"]
+    r = indicators(p, v, [], D1, D2, CFG)["iodine"]
     # ตัวหาร = ครรภ์ที่มาฝากครรภ์ที่ รพ. ในช่วง (ครรภ์ 3 ฝากที่อื่น, ครรภ์ 4 มานอกช่วง)
     assert (r["num"], r["den"], r["value"], r["ok"]) == (1, 2, 50.0, None)
 
@@ -186,7 +186,7 @@ def test_iodine_among_anc_attenders():
 def test_quality_anc_all_five_activities():
     full = {"q_cbc": True, "q_thal": True, "q_us": True, "q_down": True, "q_dm": True}
     p = [dict(preg(1), **full), dict(preg(2), **dict(full, q_down=False)), dict(preg(3), **full)]
-    ind = indicators(p, [], [], [], D1, D2, CFG)
+    ind = indicators(p, [], [], D1, D2, CFG)
     r = ind["quality"]
     assert (r["num"], r["den"], r["value"], r["target"]) == (2, 3, 66.7, 70) and r["ok"] is False
     comp = ind["quality_parts"]
@@ -212,12 +212,12 @@ def test_area_filters_kpi_denominators_only():
     inside = dict(preg(1, reg=date(2026, 2, 1)), thai=True, labour_hospcode="10894", village="30250101", has_dt=True)
     outside = dict(preg(2, reg=date(2026, 2, 1)), thai=True, labour_hospcode="24060", village="30210101")
     area = lambda p: in_area(p, CFG)
-    r = indicators([inside, outside], [], [], [], D1, D2, CFG, area=area)
+    r = indicators([inside, outside], [], [], D1, D2, CFG, area=area)
     assert (r["dt"]["num"], r["dt"]["den"]) == (1, 1)              # ตัวหาร KPI นับเฉพาะในเขต
     assert r["new"]["value"] == 2                                   # ข้อมูลบริการนับทั้งหมด
     a = by_age([inside, outside], [], D1, D2, CFG, area=area)
     assert a["repro"]["new"] == 2 and a["repro"]["early12"]["den"] == 1
-    assert indicators([inside, outside], [], [], [], D1, D2, CFG)["dt"]["den"] == 2   # ไม่ส่ง area = ทั้งหมด
+    assert indicators([inside, outside], [], [], D1, D2, CFG)["dt"]["den"] == 2   # ไม่ส่ง area = ทั้งหมด
 
 
 def test_labor_completeness():
@@ -255,3 +255,26 @@ def test_visit8_target_follows_fiscal_year():
     assert visit8_target(date(2026, 9, 30), load_config({"ANC_TARGET_VISIT8": "80"})) == 80
     r = run([preg(1)], [visit(1, w) for w in (8, 15, 24, 29, 33, 36, 38, 40)])["visit8"]
     assert r["target"] == 65 and r["ok"] is True
+
+
+def teen(anc_id, age_labor, gravida, labor=date(2026, 3, 1), **kw):
+    return dict(preg(anc_id, age=age_labor, labor=labor, **kw), age_labor=age_labor, gravida=gravida)
+
+
+def test_teen_repeat_pregnancy():
+    # เอกสาร 2.1: ครรภ์สิ้นสุด (คลอด/แท้ง) ในช่วง · อายุ ณ วันสิ้นสุด < 20 · ตัวตั้ง = ครรภ์ที่ ≥ 2
+    pregs = [teen(1, 17, 2), teen(2, 19, 1), teen(3, 18, None), teen(4, 20, 3),
+             teen(5, 16, 3, labor=date(2025, 12, 31)), teen(6, None, 2), teen(7, 15, 4)]
+    r = run(pregs)["teen_repeat"]
+    assert (r["num"], r["den"], r["value"]) == (2, 4, 50.0)
+    assert r["target"] == 12.0 and r["ok"] is False          # ปีงบ 2569 · ยิ่งต่ำยิ่งดี
+
+
+def test_teen_repeat_target_by_fiscal_year_or_env():
+    from metrics import teen_repeat_target
+    assert teen_repeat_target(date(2024, 10, 1), CFG) == 12.5        # ปีงบ 2568
+    assert teen_repeat_target(date(2027, 9, 30), CFG) == 11.5        # ปีงบ 2570
+    assert teen_repeat_target(date(2030, 1, 1), CFG) == 11.5         # นอกตาราง = ค่าขอบ
+    assert teen_repeat_target(D2, load_config({"ANC_TARGET_TEEN_REPEAT": "10"})) == 10
+    r = run([teen(1, 17, 1), teen(2, 18, 1)])["teen_repeat"]
+    assert r["value"] == 0.0 and r["ok"] is True

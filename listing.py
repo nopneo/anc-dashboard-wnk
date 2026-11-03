@@ -11,6 +11,7 @@ from openpyxl.styles import Font
 
 import metrics
 import risk27
+import sti
 
 TH_MONTHS = metrics.TH_MONTHS
 
@@ -27,6 +28,20 @@ def _pcu_name(village, pcu_map, cfg):
     return metrics.pcu_of(village, pcu_map or {}, cfg)[1]
 
 
+def _extra(key, data):
+    """คอลัมน์เพิ่มเฉพาะบางรายชื่อ → [(หัวคอลัมน์, ฟังก์ชันรับครรภ์)]"""
+    if key == "teen_repeat":
+        dash = lambda v: "-" if v is None else v
+        return [("อายุ ณ วันสิ้นสุดครรภ์", lambda p: dash(p.get("age_labor"))),
+                ("ครรภ์ที่", lambda p: dash(p.get("gravida")))]
+    t = re.fullmatch(r"sti_(\w+?)_(test|pos)", key or "")
+    if t and t.group(1) in sti.LABELS:
+        res = data.get("sti") or {}
+        k = t.group(1)
+        return [(f"ผลตรวจ {sti.LABELS[k]}", lambda p: ((res.get(p["anc_id"]) or {}).get(k) or (None, "-"))[1])]
+    return []
+
+
 def table(m, data, cfg, pcu_map, names):
     """(หัวตาราง, แถว) ของรายชื่อ m = drill.members(...)"""
     kind, ok_label = m["kind"], m["ok_label"]
@@ -36,9 +51,10 @@ def table(m, data, cfg, pcu_map, names):
         vmap = metrics._by_anc(data["visits"])
         buckets = {"visit5": metrics.GA_BUCKETS, "visit8": metrics.GA_BUCKETS_8}.get(m["key"])
         flags = risk27.flags([p for p, _ in m["rows"]], data["risk_hits"], cfg)
+        extra = _extra(m["key"], data)
         head = ["ชื่อ-สกุล", "HN", "อายุ", "ที่อยู่", "รพ.สต.", "วันลงทะเบียน", "LMP", "GA ครั้งแรก",
                 "ฝากครรภ์ (ที่ รพ./ที่อื่น)"] + (["ช่วงที่ยังขาด (สัปดาห์)"] if buckets else []) + \
-               ["วันคลอด", "สถานที่คลอด"] + ([ok_label] if ok_label else []) + ["ข้อเสี่ยงที่พบ (27 ข้อ)"]
+               ["วันคลอด", "สถานที่คลอด"] + [h for h, _ in extra] + ([ok_label] if ok_label else []) +                ["ข้อเสี่ยงที่พบ (27 ข้อ)"]
         for p, ok in m["rows"]:
             vs = vmap.get(p["anc_id"], [])
             ga = metrics._first_ga(p, vs)
@@ -53,6 +69,7 @@ def table(m, data, cfg, pcu_map, names):
             cells += [thai_date(p.get("labor_date")),
                       ("รพ.นี้" if p.get("labour_hospcode") == cfg.hospcode else p.get("labour_place")
                        or p.get("labour_hospcode") or "-") if p.get("labor_date") else "-"]
+            cells += [f(p) for _, f in extra]
             if ok_label:
                 cells.append(mark(ok))
             cells.append(", ".join(risk27.LABELS[k] for k in flags.get(p["anc_id"], {})) or "-")

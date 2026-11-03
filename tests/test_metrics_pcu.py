@@ -61,7 +61,7 @@ def test_unmapped_villages_only_in_district():
 
 def test_alerts_rules():
     pregs = [preg(i, "30250101", age=14 if i == 1 else 25, dt=i < 3) for i in range(1, 7)]
-    ind = indicators(pregs, [], [], [], D1, D2, CFG)
+    ind = indicators(pregs, [], [], D1, D2, CFG)
     age = by_age(pregs, [], D1, D2, CFG)
     rows = by_pcu(pregs + [preg(9, "30250999")] * 6, [], [], [], D1, D2, CFG, MAP)
     al = alerts(ind, rows, age, [("30250999", 2)])
@@ -72,5 +72,5 @@ def test_alerts_rules():
     assert UNK[1] not in texts                      # แถวรวม (ไม่ทราบหมู่ / นอกเขต) ไม่ขึ้น alert ราย รพ.สต.
     for a in al:
         assert set(a) == {"level", "text", "owner", "action"}
-    clean = alerts(indicators([], [], [], [], D1, D2, CFG), [], by_age([], [], D1, D2, CFG), [])
+    clean = alerts(indicators([], [], [], D1, D2, CFG), [], by_age([], [], D1, D2, CFG), [])
     assert clean == []
