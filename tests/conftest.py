@@ -5,3 +5,4 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("ANC_HOSPITAL_NAME", "โรงพยาบาลทดสอบ")     # ไม่ต้องอ่าน opdconfig
+os.environ["ANC_SECRET_KEY"] = ""                      # ไม่ให้ .env ของเครื่องเปิดหน้ารายชื่อ · เทสต์ที่ต้องใช้ตั้งเอง

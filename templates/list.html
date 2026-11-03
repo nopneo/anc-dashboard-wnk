@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>รายชื่อ — ANC Dashboard</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ css_v }}">
+<meta name="theme-color" content="#0b2e8a">
+</head>
+{% set base = {'k': f.k, 'd1': f.d1.isoformat(), 'd2': f.d2.isoformat(), 'scope': f.scope} %}
+{% if f.pcu %}{% set _ = base.update({'pcu': f.pcu}) %}{% endif %}
+{% if f.age %}{% set _ = base.update({'age': f.age}) %}{% endif %}
+<body>
+<div class="wrap">
+  <header class="hdr">
+    <div class="logo"><img src="{{ logo_url }}" alt="ตรา{{ hospital }}"></div>
+    <div class="title">
+      <h1>{{ m.label }}</h1>
+      <h2>ช่วงข้อมูล {{ period }} <span>· ตัวหาร{{ scopes[f.scope] }}
+        {%- if f.pcu_label %} · {{ f.pcu_label }}{% endif %}{% if f.age %} · อายุ {{ ages[f.age] }}{% endif %}</span></h2>
+    </div>
+    <div class="right">
+      <span class="who">👤 {{ user.display }}</span>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button class="btn white" type="submit">ออกจากระบบ</button>
+      </form>
+    </div>
+  </header>
+
+  <div class="filters list-filters">
+    <a class="btn white" href="{{ url_for('dashboard', d1=base.d1, d2=base.d2, scope=base.scope) }}">← แดชบอร์ด</a>
+    {% if m.ok_label %}
+    <span class="lbl">แสดง:</span>
+    <a class="pill{{ ' on' if not f.only }}" href="{{ url_for('list_page', **base) }}">ทั้งหมด</a>
+    <a class="pill{{ ' on' if f.only == 'in' }}" href="{{ url_for('list_page', only='in', **base) }}">{{ m.ok_label }} ✔</a>
+    <a class="pill{{ ' on' if f.only == 'out' }}" href="{{ url_for('list_page', only='out', **base) }}">ไม่{{ m.ok_label }} ✘</a>
+    {% endif %}
+    <form method="get">
+      {% for k, v in base.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      {% if f.only %}<input type="hidden" name="only" value="{{ f.only }}">{% endif %}
+      <input type="search" name="q" value="{{ f.q or '' }}" placeholder="ค้นชื่อ / HN" aria-label="ค้นชื่อหรือ HN">
+      <button type="submit">ค้นหา</button>
+    </form>
+    {% set xq = dict(base) %}
+    {% if f.only %}{% set _ = xq.update({'only': f.only}) %}{% endif %}
+    {% if f.q %}{% set _ = xq.update({'q': f.q}) %}{% endif %}
+    <a class="btn blue" href="{{ url_for('list_export', **xq) }}">⬇ Excel</a>
+    {% if not f.pcu and pcu_names %}
+    <a class="btn blue" href="{{ url_for('list_export', by_pcu=1, **xq) }}">⬇ Excel แยก รพ.สต.</a>
+    {% endif %}
+  </div>
+
+  <section class="panel">
+    <div class="ph"><span class="ic">📋</span><h3>{{ '{:,}'.format(rows | length) }} ราย
+      {%- if m.ok_label and not f.only %} · {{ m.ok_label }} {{ rows | selectattr('ok') | list | length }} ราย{% endif %}</h3></div>
+    <div class="pb">
+      {% if rows %}
+      <div class="scroll">
+      <table class="t list-t">
+        <thead><tr><th>#</th>{% for h in head %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for r in rows %}
+        <tr class="row"{{ ' data-miss' if r.ok is sameas false }}><td>{{ loop.index }}</td>
+          {% for c in r.cells %}<td>{{ c }}</td>{% endfor %}</tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="hint">ไม่มีรายชื่อตามเงื่อนไขนี้</p>
+      {% endif %}
+      <p class="hint">ข้อมูลส่วนบุคคล — ใช้เพื่อดูแล/ติดตามผู้รับบริการเท่านั้น · การเปิดดูและส่งออกถูกบันทึกไว้ทุกครั้ง
+        {% if m.kind == 'preg' %}· "ฝากครรภ์" = จำนวนครั้งที่ รพ. / ที่หน่วยบริการอื่น · ข้อเสี่ยง 27 ข้อ: ข้อความจาก HPI/PMH เป็นค่าประมาณ{% endif %}</p>
+    </div>
+  </section>
+</div>
+</body>
+</html>

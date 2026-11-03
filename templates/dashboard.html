@@ -11,6 +11,10 @@
 {#- ตัวเลข: None → "—" · int ใส่คอมมา -#}
 {% macro fmt(v) %}{% if v is none %}—{% elif v is integer %}{{ '{:,}'.format(v) }}{% else %}{{ v }}{% endif %}{% endmacro %}
 
+{#- ตัวเลขที่กดดูรายชื่อได้ (ต้อง login) · โหมดพิมพ์/ส่งออก และเมื่อปิดหน้ารายชื่อ แสดงเป็นตัวเลขธรรมดา -#}
+{% macro L(key, text) %}{% if list_on and not print_mode %}<a class="drill" title="ดูรายชื่อ"
+  href="{{ url_for('list_page', k=key, d1=d.d1, d2=d.d2, scope=d.scope, **kwargs) }}">{{ text }}</a>{% else %}{{ text }}{% endif %}{% endmacro %}
+
 {#- ช่องอัตรา: แดงเมื่อไม่ผ่านเป้า · จางเมื่อตัวหาร < 5 -#}
 {% macro rate(r) %}<span class="{{ 'bad' if r.ok is sameas false }} {{ 'low' if r.low_base }}"
   title="{{ r.num }}/{{ r.den if r.den is not none else '—' }}{{ ' · ฐานน้อย ตีความระวัง' if r.low_base }}">{{ fmt(r.value) }}{{ '%' if r.value is not none }}</span>{% endmacro %}
@@ -123,19 +127,19 @@
   <!-- ============================================================ 1. KPI -->
   <section class="kpis" aria-label="ANC KPI Summary · ภาพรวมงานฝากครรภ์">
     <div class="kpi k-blue"><div class="ic">🤰</div><div class="tt">ฝากครรภ์รายใหม่</div>
-      <div class="v">{{ fmt(k.new.value) }}</div><div class="u">ราย · กำลังติดตาม {{ d.tracking.open }} ราย</div></div>
+      <div class="v">{{ L('new', fmt(k.new.value)) }}</div><div class="u">ราย · กำลังติดตาม {{ L('open', d.tracking.open) }} ราย</div></div>
     <div class="kpi k-green"><div class="ic">📋</div><div class="tt">ครั้งบริการ ANC</div>
       <div class="v">{{ fmt(k.visits.value) }}</div><div class="u">ครั้ง</div></div>
     <div class="kpi k-orange"><div class="ic">📆</div><div class="tt">เฉลี่ยครั้ง/เดือน</div>
       <div class="v">{{ fmt(k.per_month.value) }}</div><div class="u">ครั้ง/เดือน</div></div>
     <div class="kpi k-purple"><div class="ic">⏱️</div><div class="tt">ฝากครรภ์ก่อน 12 wk</div>
       <div class="v">{{ fmt(k.early12.value) }}{{ '%' if k.early12.value is not none }}</div>
-      <div class="u">{{ k.early12.num }}/{{ k.early12.den }} ราย ที่คลอด</div>{{ kbar(k.early12) }}</div>
+      <div class="u">{{ L('early12', k.early12.num ~ '/' ~ k.early12.den) }} ราย ที่คลอด</div>{{ kbar(k.early12) }}</div>
     <div class="kpi k-teal"><div class="ic">✅</div><div class="tt">ANC ครบ 5 ครั้ง</div>
       <div class="v">{{ fmt(k.visit5.value) }}{{ '%' if k.visit5.value is not none }}</div>
-      <div class="u">{{ k.visit5.num }}/{{ k.visit5.den }} ราย ที่คลอด</div>{{ kbar(k.visit5) }}</div>
+      <div class="u">{{ L('visit5', k.visit5.num ~ '/' ~ k.visit5.den) }} ราย ที่คลอด</div>{{ kbar(k.visit5) }}</div>
     <div class="kpi k-red"><div class="ic">🚑</div><div class="tt">ส่งต่อ (Refer)</div>
-      <div class="v">{{ '—' if rerr else fmt(d.refer.total) }}</div><div class="u">ครั้ง</div></div>
+      <div class="v">{{ '—' if rerr else L('refer', fmt(d.refer.total)) }}</div><div class="u">ครั้ง</div></div>
     <div class="kpi k-cyan"><div class="ic">⌛</div><div class="tt">เวลารอคอยเฉลี่ย</div>
       <div class="v">{{ fmt(k.wait.value) }}</div><div class="u">นาที · มาถึง → เริ่มตรวจ · {{ fmt(k.wait.den) }} visit</div></div>
   </section>
@@ -194,17 +198,18 @@
         <ul class="legend">
           {% for g, label, ages, col in names %}
           <li><span class="dot" style="background:{{ col }}"></span><span class="nm">{{ label }} <span class="code">{{ ages }}</span></span>
-            <span class="vl">{{ a[g].new }} · {{ fmt(a[g].share) }}{{ '%' if a[g].share is not none }}</span></li>
+            <span class="vl">{{ L('new', a[g].new, age=g) }} · {{ fmt(a[g].share) }}{{ '%' if a[g].share is not none }}</span></li>
           {% endfor %}
           <li><span class="dot" style="background:#dc2626"></span><span class="nm">อายุ &lt; 15 ปี</span>
-            <span class="vl {{ 'bad' if a.teen.lt15 }}">{{ a.teen.lt15 }} ราย</span></li>
+            <span class="vl {{ 'bad' if a.teen.lt15 }}">{{ L('new', a.teen.lt15, age='lt15') }} ราย</span></li>
         </ul>
       </div>
       <table class="mini">
         <tr><th>กลุ่ม</th><th>ก่อน 12 wk</th><th>ครบ 5</th><th>โลหิตจาง</th></tr>
         {% for g, label, ages, col in names %}
         <tr><td><span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:{{ col }}"></span>
-          {{ label }}</td><td>{{ rate(a[g].early12) }}</td><td>{{ rate(a[g].visit5) }}</td><td>{{ rate(a[g].anemia) }}</td></tr>
+          {{ label }}</td><td>{{ L('early12', rate(a[g].early12), age=g) }}</td><td>{{ L('visit5', rate(a[g].visit5), age=g) }}</td>
+          <td>{{ L('anemia', rate(a[g].anemia), age=g) }}</td></tr>
         {% endfor %}
       </table>
       </div>
@@ -227,7 +232,7 @@
       </div>
       <ul class="legend" style="margin-top:10px">
         {% for key in tk %}{% set r = k[key] %}
-        <li><span class="nm">{{ labels[key] }}</span>{{ rate(r) }}</li>
+        <li><span class="nm">{{ labels[key] }}</span>{{ L(key, rate(r)) }}</li>
         {% endfor %}
       </ul>
       </div>
@@ -260,14 +265,14 @@
         <tr>
           <td>{{ label }} <span class="src">({{ unit }})</span><br><span class="src">HOSxP: {{ src }}</span></td>
           <td class="n">{% if unit == '%' %}{{ rate(r) }}{% else %}<b>{{ fmt(r.value) }}</b>{% endif %}</td>
-          <td class="n">{% if r.den is not none and unit == '%' %}{{ r.num }}/{{ r.den }}{% else %}—{% endif %}</td>
+          <td class="n">{% if r.den is not none and unit == '%' %}{{ L(key, r.num ~ '/' ~ r.den) }}{% else %}—{% endif %}</td>
           <td class="n">{% if r.target is not none %}{{ '≤' if key in ('anemia', 'lbw') else '≥' }} {{ r.target }}%{% else %}—{% endif %}</td>
           <td>{% if r.ok is sameas true %}<span class="st ok">ผ่าน</span>{% elif r.ok is sameas false %}<span class="st no">ไม่ผ่าน</span>
               {% elif r.target is not none %}<span class="st na">ไม่มีข้อมูล</span>{% endif %}</td>
         </tr>
         {% if key == 'quality' %}{% for p in k.quality_parts %}
         <tr class="sub"><td>↳ {{ p.label }}</td><td class="n">{{ rate(p.rate) }}</td>
-          <td class="n">{{ p.rate.num }}/{{ p.rate.den }}</td><td></td><td></td></tr>
+          <td class="n">{{ L(p.key, p.rate.num ~ '/' ~ p.rate.den) }}</td><td></td><td></td></tr>
         {% endfor %}{% endif %}
         {% endfor %}
       </table>
@@ -325,20 +330,20 @@
       <div class="otiles">
         {% if d.risk27 %}
         <div class="otile"><span class="ol">ครรภ์เสี่ยง (≥ 1 จาก 27 ข้อ)</span><b>{{ fmt(d.risk27.any.pct) }}{{ '%' if d.risk27.any.pct is not none }}</b>
-          <small>{{ d.risk27.any.num }}/{{ d.risk27.any.den }} รายใหม่ · รายละเอียดด้านล่าง</small></div>
+          <small>{{ L('r27_any', d.risk27.any.num ~ '/' ~ d.risk27.any.den) }} รายใหม่ · รายละเอียดด้านล่าง</small></div>
         {% else %}
         <div class="otile"><span class="ol">ครรภ์เสี่ยงสูง</span><b>—</b><small>คำนวณไม่ได้</small></div>
         {% endif %}
         <div class="otile"><span class="ol">คลอดก่อนกำหนด &lt; 37 wk</span><b>{{ rate(o.preterm) }}</b>
-          <small>{{ o.preterm.num }}/{{ o.preterm.den }} · GA จาก LMP ถึงวันคลอด</small></div>
+          <small>{{ L('preterm', o.preterm.num ~ '/' ~ o.preterm.den) }} · GA จาก LMP ถึงวันคลอด</small></div>
         <div class="otile {{ 'bad-tile' if o.asphyxia.ok is sameas false }}"><span class="ol">ทารกแรกเกิดขาดออกซิเจน</span>
           <b>{{ fmt(o.asphyxia.value) }}</b>
-          <small>ต่อ 1,000 เกิดมีชีพ · {{ o.asphyxia.num }}/{{ o.asphyxia.den }} · เป้า ≤ {{ o.asphyxia.target }}</small></div>
+          <small>ต่อ 1,000 เกิดมีชีพ · {{ L('asphyxia', o.asphyxia.num ~ '/' ~ o.asphyxia.den) }} · เป้า ≤ {{ o.asphyxia.target }}</small></div>
         <div class="otile"><span class="ol">คลอดที่ รพ.</span><b>{{ fmt(o.place.pct_here) }}{{ '%' if o.place.pct_here is not none }}</b>
-          <small>{{ o.place.here }}/{{ o.place.den }} · BBA {{ o.bba }} ราย</small></div>
-        <div class="otile {{ 'bad-tile' if o.maternal_death }}"><span class="ol">มารดาเสียชีวิต</span><b>{{ o.maternal_death }}</b>
+          <small>{{ L('place_here', o.place.here ~ '/' ~ o.place.den) }} · BBA {{ L('bba', o.bba) }} ราย</small></div>
+        <div class="otile {{ 'bad-tile' if o.maternal_death }}"><span class="ol">มารดาเสียชีวิต</span><b>{{ L('maternal_death', o.maternal_death) }}</b>
           <small>ราย · ตั้งครรภ์ถึงหลังคลอด {{ d.postpartum_days }} วัน</small></div>
-        <div class="otile {{ 'bad-tile' if o.stillbirth }}"><span class="ol">ทารกตายคลอด</span><b>{{ o.stillbirth }}</b>
+        <div class="otile {{ 'bad-tile' if o.stillbirth }}"><span class="ol">ทารกตายคลอด</span><b>{{ L('stillbirth', o.stillbirth) }}</b>
           <small>ราย · คลอดใน รพ.</small></div>
       </div>
       <div class="grid g-11" style="margin-top:14px">
@@ -346,13 +351,13 @@
           <h4 class="k sub-h">ภาวะแทรกซ้อน <small>Dx ระหว่างตั้งครรภ์ถึงหลังคลอด 42 วัน · ในครรภ์ที่คลอด</small></h4>
           <ol class="plist">
             {% for c in o.complications %}
-            <li><span class="nm">{{ c.label }}</span><span class="vl">{{ c.num }} · {{ fmt(c.value) }}{{ '%' if c.value is not none }}</span>
+            <li><span class="nm">{{ c.label }}</span><span class="vl">{{ L(c.key, c.num, only='in') }} · {{ fmt(c.value) }}{{ '%' if c.value is not none }}</span>
               <div class="track"><span style="width:{{ [c.value or 0, 100] | min }}%"></span></div></li>
             {% endfor %}
           </ol>
         </div>
         <div>
-          <h4 class="k sub-h">คลอดที่อื่น <small>ครรภ์ที่คลอดในช่วงแต่ไม่ได้คลอดที่ รพ.นี้</small></h4>
+          <h4 class="k sub-h">{{ L('place_here', 'คลอดที่อื่น', only='out') }} <small>ครรภ์ที่คลอดในช่วงแต่ไม่ได้คลอดที่ รพ.นี้</small></h4>
           {% if o.place.top %}
           <ul class="legend">{% for x in o.place.top %}<li><span class="nm">{{ x.name }}</span><span class="vl">{{ x.n }}</span></li>{% endfor %}</ul>
           {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
@@ -371,7 +376,7 @@
       {% elif r %}
       <div class="otiles o4">
         {% for g in r.groups %}
-        <div class="otile"><span class="ol">{{ g.label }}</span><b>{{ g.num }}</b>
+        <div class="otile"><span class="ol">{{ g.label }}</span><b>{{ L('r27g_' ~ g.key, g.num, only='in') }}</b>
           <small>ราย · {{ fmt(g.pct) }}{{ '%' if g.pct is not none }} ของ {{ g.den }} รายใหม่</small></div>
         {% endfor %}
       </div>
@@ -388,7 +393,7 @@
             {% for it in r["items"] if it.group == gkey %}
             <tr><td class="no">{{ it.num }}</td><td>{{ it.label }}
                 {% if it.known < r.den %}<small title="มีข้อมูลพอคำนวณ">({{ it.known }}/{{ r.den }} ราย มีข้อมูล)</small>{% endif %}</td>
-              <td class="n">{{ it.n }}</td><td class="p">{{ fmt(it.pct) }}{{ '%' if it.pct is not none }}</td>
+              <td class="n">{{ L('r27_' ~ it.key, it.n, only='in') }}</td><td class="p">{{ fmt(it.pct) }}{{ '%' if it.pct is not none }}</td>
               <td class="s">{% for s in it.sources %}<span class="src {{ 't' if s == 'T' }}">{{ s }}</span>{% endfor %}</td></tr>
             {% endfor %}
           </table>
@@ -397,7 +402,7 @@
         <div>
           <h4 class="k sub-h">เพิ่มเติมจากฟอร์ม HOSxP <small>ไม่อยู่ใน 27 ข้อ แต่นับเป็นครรภ์เสี่ยง</small></h4>
           <table class="rtab">
-            {% for e in r.extras %}<tr><td></td><td>{{ e.label }}</td><td class="n">{{ e.n }}</td>
+            {% for e in r.extras %}<tr><td></td><td>{{ e.label }}</td><td class="n">{{ L('r27_' ~ e.key, e.n, only='in') }}</td>
               <td class="p">{{ fmt(e.pct) }}{{ '%' if e.pct is not none }}</td><td class="s"><span class="src">F</span></td></tr>{% endfor %}
           </table>
         </div>
@@ -460,9 +465,10 @@
         <th class="n">LBW</th><th class="n">Refer</th></tr>
       {% for r in d.pcu %}
       <tr><td class="id">{{ r.name }} {% if r.hospcode not in ('unk', 'out') %}<span class="code">{{ r.hospcode }}</span>{% endif %}</td>
-        <td class="n">{{ r.new }}</td><td class="n">{{ r.teen }}</td><td class="n">{{ r.repro }}</td><td class="n">{{ r.elder }}</td>
-        <td class="n">{{ rate(r.early12) }}</td><td class="n">{{ rate(r.visit5) }}</td><td class="n">{{ rate(r.dt) }}</td>
-        <td class="n">{{ rate(r.anemia) }}</td><td class="n">{{ rate(r.lbw) }}</td><td class="n">{{ '—' if rerr else r.refer }}</td></tr>
+        <td class="n">{{ L('new', r.new, pcu=r.hospcode) }}</td>
+        {% for g in ('teen', 'repro', 'elder') %}<td class="n">{{ L('new', r[g], pcu=r.hospcode, age=g) }}</td>{% endfor %}
+        {% for key in ('early12', 'visit5', 'dt', 'anemia', 'lbw') %}<td class="n">{{ L(key, rate(r[key]), pcu=r.hospcode) }}</td>{% endfor %}
+        <td class="n">{{ '—' if rerr else L('refer', r.refer, pcu=r.hospcode) }}</td></tr>
       {% endfor %}
     </table>
     </div>
@@ -534,7 +540,7 @@
     <span class="chips"><span>ติดต่อ: {{ contact }}</span><span>ผู้พัฒนา: {{ dev_contact }}</span></span>
   </footer>
   <p class="src-note">แหล่งข้อมูล HOSxP (อ่านอย่างเดียว): person_anc · person_anc_service · person_anc_other_precare · person_anc_lab ·
-    ovst_vaccine · dtmain · ipt_labour_infant · referout · service_time — แสดงเฉพาะจำนวนนับ ไม่มีข้อมูลรายคน</p>
+    ovst_vaccine · dtmain · ipt_labour_infant · referout · service_time — หน้านี้แสดงเฉพาะจำนวนนับ{% if list_on %} · รายชื่อเบื้องหลังตัวเลขดูได้เมื่อเข้าสู่ระบบ (บันทึกการเปิดดูทุกครั้ง){% endif %}</p>
 </div>
 
 {% if not print_mode %}

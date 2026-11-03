@@ -227,6 +227,23 @@ table.t td.id { font-weight: 700; color: var(--navy); white-space: nowrap; }
 
 /* ------------------------------------------------------- print / export */
 body.print-mode .noprint { display: none !important; }
+/* ---------- ตัวเลขที่กดดูรายชื่อได้ · หน้ารายชื่อ · login ---------- */
+a.drill { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+a.drill:hover { text-decoration-style: solid; }
+.who { font-family: 'Kanit'; color: var(--navy); }
+.list-filters { justify-content: flex-start; }
+table.list-t { font-size: 13.5px; }
+table.list-t td { white-space: nowrap; }
+table.list-t td:last-child { white-space: normal; min-width: 180px; }
+table.list-t tr[data-miss] td { background: #fff5f5; }
+.login { max-width: 380px; margin: 48px auto; padding: 0 16px; text-align: center; display: grid; gap: 12px; }
+.login-logo { width: 88px; height: 88px; border-radius: 50%; margin: 0 auto; background: #fff; box-shadow: var(--shadow); }
+.login h1 { font-family: 'Kanit'; color: var(--navy); font-size: 26px; }
+.login-card { display: grid; gap: 12px; padding: 18px; text-align: left; }
+.login-card label { display: grid; gap: 4px; font-family: 'Kanit'; color: var(--navy); }
+.login-card input { font: inherit; border: 1px solid #c9d6f2; border-radius: 10px; padding: 8px 10px; }
+.login-card .btn { background: linear-gradient(135deg, var(--blue), var(--navy2)); color: #fff; border: 0; cursor: pointer; }
+
 @media print { .noprint { display: none !important; } }
 
 /* ------------------------------------------------------------ responsive */

@@ -243,7 +243,7 @@ def postnatal(anc_ids):
 INFANTS = """
 select i.birth_date, i.birth_weight weight, coalesce(n.dead, 'N') dead, i.infant_dchstts dchstts,
        i.apgar_score_min1 apgar1, i.has_birth_asphyxia asphyxia, i.infant_delivery_type_id delivery_type,
-       pt.chwpart, pt.amppart, pt.tmbpart, pt.moopart
+       pt.chwpart, pt.amppart, pt.tmbpart, pt.moopart, pt.hn
   from ipt_labour_infant i
   join ipt_labour il on il.ipt_labour_id = i.ipt_labour_id
   left join ipt on ipt.an = il.an
@@ -255,13 +255,13 @@ select i.birth_date, i.birth_weight weight, coalesce(n.dead, 'N') dead, i.infant
 
 def infants(d1, d2, dead_dchstts=("08", "09")):
     """ทารกเกิดใน รพ. · ตาย = ipt_newborn.dead='Y' หรือสถานะจำหน่ายทารกเป็นรหัสตาย (ANC_DEAD_DCHSTTS)
-    — ipt_newborn มีเฉพาะทารกที่ได้ AN จึงใช้ infant_dchstts จับรายตายคลอดด้วย"""
+    — ipt_newborn มีเฉพาะทารกที่ได้ AN จึงใช้ infant_dchstts จับรายตายคลอดด้วย · hn = HN มารดา (ipt_labour)"""
     dead = tuple(dead_dchstts)
     return [{"birth_date": _date(r.get("birth_date")), "weight": _int_or_none(r.get("weight")) or None,
              "alive": str(r.get("dead") or "N").upper() != "Y" and str(r.get("dchstts") or "").strip() not in dead,
              "village": _village(r), "apgar1": _int_or_none(r.get("apgar1")),
              "asphyxia": str(r.get("asphyxia") or "").strip().upper() == "Y",
-             "delivery_type": (str(r.get("delivery_type") or "").strip() or None)}
+             "delivery_type": (str(r.get("delivery_type") or "").strip() or None), "hn": r.get("hn")}
             for r in fetch(INFANTS, {"d1": d1, "d2": d2, "dead": dead})]
 
 
@@ -410,3 +410,19 @@ select q.anc_id,
 def risk_hits(d1, d2, cfg):
     t = risk_text_hits(d1, d2, cfg)
     return {"form": risk_form_hits(d1, d2), "dx": risk_dx_hits(d1, d2, cfg), "text": t["text"], "body": t["body"]}
+
+
+NAMES = "select hn, pname, fname, lname, addrpart, moopart from patient where hn in %(hns)s"
+
+
+def names(hns):
+    """{hn: {"name", "addr"}} — ดึงเฉพาะหน้ารายชื่อหลัง login (หน้าแดชบอร์ดไม่มีชื่อผู้ป่วย)"""
+    hns = sorted({h for h in hns if h})
+    out = {}
+    for i in range(0, len(hns), BATCH):
+        for r in fetch(NAMES, {"hns": tuple(hns[i:i + BATCH])}):
+            name = f"{(r.get('pname') or '').strip()}{(r.get('fname') or '').strip()} {(r.get('lname') or '').strip()}"
+            moo = str(r.get("moopart") or "").strip()
+            addr = " ".join(x for x in ((r.get("addrpart") or "").strip(), f"ม.{int(moo)}" if moo.isdigit() else "") if x)
+            out[r["hn"]] = {"name": name.strip(), "addr": addr}
+    return out

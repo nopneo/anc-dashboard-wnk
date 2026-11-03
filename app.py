@@ -10,26 +10,33 @@ import ipaddress
 import json
 import os
 import re
+import secrets
 import tempfile
 import threading
 import time
 import urllib.parse
 from datetime import date, datetime, timedelta
+from functools import wraps
 from io import BytesIO
+from urllib.parse import urlsplit
 
 try:
     import fcntl                      # Linux/macOS — ล็อกไฟล์ข้ามโปรเซสของ gunicorn
 except ImportError:                   # Windows
     fcntl = None
 
-from flask import Flask, Response, render_template, request, send_file, url_for
+from flask import (Flask, Response, abort, flash, g, redirect, render_template, request, send_file, session,
+                   url_for)
 
 import check
 import db
+import drill
+import listing
 import render
 import metrics
 import risk27
 import queries
+import store
 from cache import TTLCache
 from config import PcuMapError, load_config, load_village_pcu
 
@@ -58,6 +65,12 @@ class PrefixMiddleware:
 
 app = Flask(__name__)
 app.wsgi_app = PrefixMiddleware(app.wsgi_app)
+#: กุญแจ session ของหน้ารายชื่อ — ไม่ตั้ง = ปิดหน้ารายชื่อ/login ทั้งหมด (แดชบอร์ดตัวเลขยังใช้ได้)
+#: สุ่มเองไม่ได้: gunicorn หลาย worker จะได้กุญแจคนละตัว และ login หลุดทุกครั้งที่ restart
+app.secret_key = os.getenv("ANC_SECRET_KEY") or None
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  SESSION_COOKIE_SECURE=os.getenv("ANC_COOKIE_SECURE", "0") == "1",
+                  PERMANENT_SESSION_LIFETIME=8 * 3600)
 
 VERSION = "0.1.0"
 DEV_CONTACT = "นายเผด็จชัย สิงหล โรงพยาบาลวังน้ำเขียว"
@@ -65,6 +78,8 @@ DEV_CONTACT = "นายเผด็จชัย สิงหล โรงพย
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _hosp_cache = TTLCache(maxsize=1)
 _cache = TTLCache(maxsize=32)
+#: ข้อมูลดิบจาก HOSxP ต่อช่วงวันที่ — ใช้ร่วมกันระหว่างแดชบอร์ดกับหน้ารายชื่อ (ไม่ต้องดึงซ้ำ ~30 วินาที)
+_raw = TTLCache(maxsize=24)
 
 #: ช่วงวันที่ยาวสุดต่อครั้ง — กันการดึงหลายปีจนฐานข้อมูล HOSxP ช้าทั้งโรงพยาบาล
 MAX_DAYS = int(os.getenv("ANC_MAX_DAYS", "731"))
@@ -192,6 +207,41 @@ def _safe(errors, name, fn, default):
 SCOPES = {"area": "ในเขต (ตาม KPI)", "all": "ทั้งหมด"}
 
 
+def _memo(name, d1, d2, cfg, fn):
+    key = repr((name, d1, d2, cfg))
+    hit = _raw.get(key, cfg.cache_seconds)
+    if hit is None:
+        hit = fn()
+        _raw.set(key, hit)
+    return hit
+
+
+def _main_data(d1, d2, cfg):
+    def fetch():
+        pregs = queries.pregnancies(d1, d2, cfg)
+        visits = queries.visits([p["anc_id"] for p in pregs])
+        infants = queries.infants(d1, d2, cfg.dead_dchstts)
+        waits = queries.waits(d1, d2, cfg)
+        pnc = queries.postnatal([p["anc_id"] for p in pregs if p.get("labor_date")])
+        return pregs, visits, infants, waits, pnc
+    return _memo("main", d1, d2, cfg, fetch)
+
+
+def _risk_hits(d1, d2, cfg):
+    return _memo("risk", d1, d2, cfg, lambda: queries.risk_hits(d1, d2, cfg))
+
+
+def _refers(d1, d2, cfg):
+    return _memo("refers", d1, d2, cfg, lambda: queries.refers(d1, d2))
+
+
+def load_data(d1, d2, cfg):
+    """ข้อมูลดิบทั้งหมดของช่วง (สำหรับหน้ารายชื่อ) — ส่วนไหนดึงไม่ได้ให้ล้มทั้งหน้า ไม่แสดงรายชื่อที่ขาดไป"""
+    pregs, visits, infants, _, pnc = _main_data(d1, d2, cfg)
+    return {"pregs": pregs, "visits": visits, "infants": infants, "pnc": pnc,
+            "refers": metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), "risk_hits": _risk_hits(d1, d2, cfg)}
+
+
 def build_context(d1, d2, scope="area"):
     """scope = area: ตัวหาร KPI นับหญิงไทยที่อาศัยในอำเภอหรือมาคลอดที่ รพ. (นิยามเอกสาร KPI) · all: ทุกครรภ์ในทะเบียน"""
     cfg = load_config()
@@ -203,22 +253,14 @@ def build_context(d1, d2, scope="area"):
         return hit
     errors = {}
 
-    def main():
-        pregs = queries.pregnancies(d1, d2, cfg)
-        visits = queries.visits([p["anc_id"] for p in pregs])
-        infants = queries.infants(d1, d2, cfg.dead_dchstts)
-        waits = queries.waits(d1, d2, cfg)
-        pnc = queries.postnatal([p["anc_id"] for p in pregs if p.get("labor_date")])
-        return pregs, visits, infants, waits, pnc
-
-    pregs, visits, infants, waits, pnc = _safe(errors, "main", main, ([], [], [], [], []))
+    pregs, visits, infants, waits, pnc = _safe(errors, "main", lambda: _main_data(d1, d2, cfg), ([], [], [], [], []))
     ind = metrics.indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=pnc, area=area)
     age = metrics.by_age(pregs, visits, d1, d2, cfg, area=area)
 
     outcome = metrics.outcomes(pregs, infants, [], d1, d2, cfg, area=area)
     new = [p for p in pregs if p.get("register_date") and d1 <= p["register_date"] <= d2]
-    risk27_res = _safe(errors, "risk27", lambda: risk27.summarize(new, queries.risk_hits(d1, d2, cfg), cfg), None)
-    refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(queries.refers(d1, d2), pregs, cfg), [])
+    risk27_res = _safe(errors, "risk27", lambda: risk27.summarize(new, _risk_hits(d1, d2, cfg), cfg), None)
+    refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), [])
     refer = metrics.refer_summary(refer_rows, d1, d2)
 
     pcu_map = _safe(errors, "pcu", lambda: load_village_pcu(cfg.village_csv, cfg.chwpart, cfg.amppart), None)
@@ -309,6 +351,107 @@ def _check_allowed():
 @app.context_processor
 def _audit_flags():
     return {"check_allowed": _check_allowed()}
+
+
+# ---------------------------------------------------------------- login (หน้ารายชื่อ — แบบ mental_health_dashboard)
+
+#: login ผิดเกินจำนวนนี้ใน LOGIN_WINDOW นาที → ปฏิเสธชั่วคราว (ตามชื่อผู้ใช้ / ตาม IP)
+LOGIN_MAX_USER, LOGIN_MAX_IP, LOGIN_WINDOW = 10, 30, 15
+
+
+def list_enabled():
+    return bool(app.secret_key)
+
+
+def _list_gate():
+    """หน้ารายชื่อ/login: ปิดเมื่อไม่ตั้ง ANC_SECRET_KEY · ANC_LIST_LAN_ONLY=1 = เข้าได้เฉพาะเครื่องใน รพ."""
+    if not list_enabled():
+        abort(404)
+    if os.getenv("ANC_LIST_LAN_ONLY", "0") == "1" and not _from_lan():
+        abort(403)
+
+
+def _load_user():
+    uid = session.get("uid") if list_enabled() else None
+    g.user = store.get_user(uid) if uid else None
+    return g.user
+
+
+def audit(action, detail=None):
+    store.log(g.user["username"] if g.get("user") else None, action, detail, _client_ip())
+
+
+def login_required(f):
+    @wraps(f)
+    def wrap(*a, **kw):
+        _list_gate()
+        if not _load_user():
+            # script_root = sub-path หลัง proxy (เช่น /anc) — ไม่ใส่จะเด้งไปเว็บหลักของ รพ.
+            return redirect(url_for("login", next=request.script_root + request.full_path))
+        return f(*a, **kw)
+    return wrap
+
+
+def _csrf_token():
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_hex(16)
+    return session["csrf"]
+
+
+def _check_csrf():
+    # session ใหม่ไม่มี csrf → "" == "" ผ่านได้ จึงต้องมีค่าจริงด้วย
+    sent, want = request.form.get("csrf", ""), session.get("csrf", "")
+    if not want or not secrets.compare_digest(sent, want):
+        abort(400)
+
+
+@app.context_processor
+def _list_ctx():
+    return {"list_on": list_enabled(), "csrf_token": _csrf_token if list_enabled() else (lambda: ""),
+            "user": g.get("user")}
+
+
+def _safe_next(nxt):
+    """next= หลัง login: รับเฉพาะ path ในแอป · ปฏิเสธอักขระควบคุมและ \\ (เบราว์เซอร์อ่าน "/\\evil" เป็น "//evil")"""
+    if "\\" in nxt or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in nxt):
+        return None
+    parts = urlsplit(nxt)
+    if parts.scheme or parts.netloc or nxt.startswith("//"):
+        return None
+    return nxt if nxt.startswith(request.script_root + "/") else None
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    _list_gate()
+    if request.method == "POST":
+        _check_csrf()
+        username = request.form.get("username", "").strip()[:64]
+        by_user, by_ip = store.recent_failures(username, _client_ip(), LOGIN_WINDOW)
+        if by_user >= LOGIN_MAX_USER or by_ip >= LOGIN_MAX_IP:
+            flash(f"ใส่รหัสผิดหลายครั้งเกินไป ลองใหม่อีก {LOGIN_WINDOW} นาที")
+            return render_template("login.html"), 429
+        u = store.check_login(username, request.form.get("password", ""))
+        if u:
+            session.clear()
+            session.permanent = True
+            session["uid"] = u["id"]
+            g.user = u
+            audit("login")
+            return redirect(_safe_next(request.args.get("next") or "") or url_for("dashboard"))
+        store.log(username, "login_fail", ip=_client_ip())
+        flash("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+    return render_template("login.html")
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    _list_gate()
+    _check_csrf()
+    if _load_user():
+        audit("logout")
+    session.clear()
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/")
@@ -450,6 +593,82 @@ def export(fmt):
         return {"error": f"ส่งออกไม่สำเร็จ: {type(e).__name__}"}, 500
     finally:
         _render_lock.release()
+
+
+LIST_AGES = metrics.AGE_GROUPS + ("lt15", "15_19")
+
+
+def _list_result():
+    """อ่านตัวกรองจาก query string ตามสิทธิ์ผู้ใช้ → (ตัวกรอง, ผลของ drill, หัวตาราง, แถว) ใช้ทั้งหน้ารายชื่อและ Excel"""
+    a = request.args
+    d1, d2 = _range_from(a.get("d1"), a.get("d2"))
+    scope = a.get("scope") if a.get("scope") in SCOPES else "area"
+    pcu = a.get("pcu") if re.fullmatch(r"[0-9A-Za-z]{1,10}", a.get("pcu") or "") else None
+    if g.user["hospcode"] not in ("all", ""):
+        pcu = g.user["hospcode"]                       # ผู้ใช้ รพ.สต. เห็นเฉพาะเขตตัวเอง
+    f = {"k": a.get("k") or "", "d1": d1, "d2": d2, "scope": scope, "pcu": pcu,
+         "age": a.get("age") if a.get("age") in LIST_AGES else None,
+         "only": a.get("only") if a.get("only") in ("in", "out") else None,
+         "q": (a.get("q") or "").strip()[:40] or None}
+    cfg = load_config()
+    try:
+        pcu_map = load_village_pcu(cfg.village_csv, cfg.chwpart, cfg.amppart)
+    except PcuMapError:
+        pcu_map = None
+    data = load_data(d1, d2, cfg)
+    area = (lambda p: metrics.in_area(p, cfg)) if scope == "area" else None
+    m = drill.members(f["k"], data, d1, d2, cfg, area, pcu_map, pcu=pcu, age=f["age"])
+    if m is None:
+        abort(404)
+    hns = [x.get("hn") for x, _ in m["rows"]]
+    head, rows = listing.table(m, data, cfg, pcu_map, queries.names(hns))
+    if f["only"]:
+        rows = [r for r in rows if r["ok"] is (f["only"] == "in")]
+    if f["q"]:
+        rows = [r for r in rows if f["q"].lower() in r["search"].lower()]
+    pcu_names = dict(metrics._pcu_order(pcu_map, cfg)) if pcu_map is not None else {}
+    f["pcu_label"] = pcu_names.get(pcu, pcu) if pcu else None
+    return f, m, head, rows, pcu_names
+
+
+def _audit_detail(f, n):
+    return " ".join(f"{k}={v}" for k, v in (("k", f["k"]), ("d", f"{f['d1']}..{f['d2']}"), ("scope", f["scope"]),
+                                            ("pcu", f["pcu"]), ("age", f["age"]), ("only", f["only"]),
+                                            ("q", f["q"]), ("n", n)) if v is not None)
+
+
+def _no_store(resp):
+    resp.headers["Cache-Control"] = "no-store"     # มีชื่อผู้ป่วย — ห้ามแคชที่ proxy/เบราว์เซอร์
+    return resp
+
+
+@app.route("/list")
+@login_required
+def list_page():
+    f, m, head, rows, pcu_names = _list_result()
+    audit("view_list", _audit_detail(f, len(rows)))
+    period = f"{thai_date(f['d1'])} – {thai_date(f['d2'])}"
+    return _no_store(app.make_response(render_template(
+        "list.html", f=f, m=m, head=head, rows=rows, period=period, scopes=SCOPES, pcu_names=pcu_names,
+        ages={"teen": "< 20 ปี", "repro": "20–34 ปี", "elder": "≥ 35 ปี", "lt15": "< 15 ปี", "15_19": "15–19 ปี"})))
+
+
+@app.route("/list/export.xlsx")
+@login_required
+def list_export():
+    f, m, head, rows, _ = _list_result()
+    by_pcu = request.args.get("by_pcu") == "1"
+    audit("export_list", _audit_detail(f, len(rows)) + (" by_pcu" if by_pcu else ""))
+    meta = [("รายชื่อ", m["label"]), ("ช่วงข้อมูล", f"{thai_date(f['d1'])} – {thai_date(f['d2'])}"),
+            ("ตัวหาร", SCOPES[f["scope"]]), ("รพ.สต.", f["pcu_label"] or "ทั้งหมด"),
+            ("กลุ่มอายุ", f["age"] or "ทั้งหมด"),
+            ("เงื่อนไข", {"in": "เฉพาะเข้าเกณฑ์", "out": "เฉพาะไม่เข้าเกณฑ์"}.get(f["only"], "ทั้งหมด")),
+            ("จำนวน", len(rows)), ("ส่งออกโดย", g.user["display"]), ("เวลา", datetime.now().strftime("%Y-%m-%d %H:%M")),
+            ("หมายเหตุ", "มีข้อมูลส่วนบุคคลของผู้ป่วย — ใช้เพื่อการดูแล/ติดตามเท่านั้น ห้ามเผยแพร่")]
+    buf = listing.workbook(head, rows, meta, by_pcu=by_pcu)
+    name = f"anc_{f['k']}_{f['d1']}_{f['d2']}{'_' + f['pcu'] if f['pcu'] else ''}.xlsx"
+    return _no_store(send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                               as_attachment=True, download_name=name))
 
 
 @app.route("/healthz")

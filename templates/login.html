@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>เข้าสู่ระบบ — ANC Dashboard</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ css_v }}">
+<meta name="theme-color" content="#0b2e8a">
+</head>
+<body>
+<div class="login">
+  <img src="{{ logo_url }}" alt="ตรา{{ hospital }}" class="login-logo">
+  <h1>ANC Dashboard</h1>
+  <p class="hint">รายชื่อหญิงตั้งครรภ์ · {{ hospital }} และ รพ.สต. ในเครือข่าย</p>
+  {% for m in get_flashed_messages() %}<div class="err">⚠ {{ m }}</div>{% endfor %}
+  <form method="post" class="panel login-card">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label>ชื่อผู้ใช้<input name="username" autocomplete="username" required autofocus></label>
+    <label>รหัสผ่าน<input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="btn" type="submit">เข้าสู่ระบบ</button>
+  </form>
+  <p class="hint">ทุกการเปิดดูและส่งออกรายชื่อถูกบันทึกไว้ · ขอบัญชีผู้ใช้ได้ที่ผู้ดูแลระบบ</p>
+  <p><a href="{{ url_for('dashboard') }}">← กลับแดชบอร์ด</a></p>
+</div>
+</body>
+</html>

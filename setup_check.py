@@ -55,11 +55,29 @@ def risky_privs(grant_lines, dbname=None):
     return sorted(out)
 
 
+def _list_check():
+    """หน้ารายชื่อ (มีข้อมูลส่วนบุคคล): ปิด / เปิดแต่กุญแจสั้นหรือยังไม่มีบัญชี / พร้อมใช้"""
+    key = os.getenv("ANC_SECRET_KEY", "")
+    if not key:
+        return [("info", "หน้ารายชื่อ", "ปิดไว้ (ไม่ได้ตั้ง ANC_SECRET_KEY) — แดชบอร์ดแสดงเฉพาะตัวเลข")]
+    if len(key) < 32:
+        return [("warn", "หน้ารายชื่อ", "ANC_SECRET_KEY สั้นเกินไป — ใช้ python -c \"import secrets; print(secrets.token_hex(32))\"")]
+    import store
+    try:
+        users = [u for u in store.list_users() if u["active"]]
+    except Exception as e:
+        return [("bad", "หน้ารายชื่อ", f"เปิดฐานข้อมูลผู้ใช้ {store.DB_PATH} ไม่ได้: {type(e).__name__} — ตรวจสิทธิ์เขียนโฟลเดอร์ ANC_DATA_DIR")]
+    if not users:
+        return [("warn", "หน้ารายชื่อ", "เปิดแล้วแต่ยังไม่มีบัญชี — python manage.py adduser <ชื่อ> --display \"ชื่อ\"")]
+    lan = " · เฉพาะใน รพ." if os.getenv("ANC_LIST_LAN_ONLY", "0") == "1" else ""
+    return [("ok", "หน้ารายชื่อ", f"เปิดใช้ · บัญชี {len(users)} คน{lan} · ดูประวัติการเปิดดู: python manage.py audit")]
+
+
 def _env_checks():
     out = []
     v = sys.version_info
     out.append(("ok" if v >= (3, 10) else "bad", f"Python {platform.python_version()}", "ต้อง 3.10 ขึ้นไป"))
-    need = [("flask", "Flask"), ("pymysql", "PyMySQL"), ("dotenv", "python-dotenv"), ("PIL", "Pillow"),
+    need = [("flask", "Flask"), ("pymysql", "PyMySQL"), ("dotenv", "python-dotenv"), ("PIL", "Pillow"), ("openpyxl", "openpyxl"),
             ("waitress" if os.name == "nt" else "gunicorn", "waitress" if os.name == "nt" else "gunicorn")]
     missing = []
     for mod, pkg in need:
@@ -169,6 +187,7 @@ def run(fetch=None, cfg=None, audit=True, days=90):
     cfg = cfg or load_config()
     out = _env_checks()
     out.append(_pcu_check(cfg))
+    out += _list_check()
     db_out, db_ok = _db_checks(fetch)
     out += db_out
     if db_ok and audit:

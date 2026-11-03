@@ -133,8 +133,23 @@ def _is_5visit(p, vs):
     return {ga_bucket(visit_ga(v, p.get("lmp"))) for v in vs} >= set(range(len(GA_BUCKETS)))
 
 
+def _is_8visit(p, vs):
+    return {ga_bucket(visit_ga(v, p.get("lmp")), GA_BUCKETS_8) for v in vs} >= set(range(len(GA_BUCKETS_8)))
+
+
+def missing_buckets(p, vs, buckets=GA_BUCKETS):
+    """ช่วงอายุครรภ์ (สัปดาห์) ที่ยังไม่มีการฝากครรภ์ เช่น ["13–19", "26–31"] — ใช้ในหน้ารายชื่อ"""
+    have = {ga_bucket(visit_ga(v, p.get("lmp")), buckets) for v in vs}
+    return [f"{lo}–{hi}" if lo else f"≤{hi}" for i, (lo, hi) in enumerate(buckets) if i not in have]
+
+
+def is_early12(p, vs):
+    g = _first_ga(p, vs)
+    return g is not None and g <= 12
+
+
 def rate_early12(delivered, vmap, cfg):
-    num = sum(1 for p in delivered if (g := _first_ga(p, vmap.get(p["anc_id"], []))) is not None and g <= 12)
+    num = sum(1 for p in delivered if is_early12(p, vmap.get(p["anc_id"], [])))
     return _rate("early12", num, len(delivered), cfg)
 
 
@@ -151,9 +166,7 @@ def visit8_target(d2, cfg):
 
 
 def rate_visit8(delivered, vmap, d2, cfg):
-    need = set(range(len(GA_BUCKETS_8)))
-    num = sum(1 for p in delivered
-              if {ga_bucket(visit_ga(v, p.get("lmp")), GA_BUCKETS_8) for v in vmap.get(p["anc_id"], [])} >= need)
+    num = sum(1 for p in delivered if _is_8visit(p, vmap.get(p["anc_id"], [])))
     r = _rate("visit8", num, len(delivered), cfg)
     r["target"] = visit8_target(d2, cfg)
     r["ok"] = None if r["value"] is None else r["value"] >= r["target"]
@@ -164,19 +177,26 @@ def rate_flag(key, flag, delivered, cfg):
     return _rate(key, sum(1 for p in delivered if p.get(flag)), len(delivered), cfg)
 
 
+def anemia_base(delivered):
+    return [p for p in delivered if p.get("hct_late") is not None]
+
+
 def rate_anemia(delivered, cfg):
-    tested = [p["hct_late"] for p in delivered if p.get("hct_late") is not None]
-    return _rate("anemia", sum(1 for h in tested if h < cfg.hct_cutoff), len(tested), cfg)
+    tested = anemia_base(delivered)
+    return _rate("anemia", sum(1 for p in tested if p["hct_late"] < cfg.hct_cutoff), len(tested), cfg)
+
+
+def live_weighed(infants, d1, d2):
+    return [i for i in infants if _in(i.get("birth_date"), d1, d2) and i.get("alive") and i.get("weight")]
 
 
 def rate_lbw(infants, d1, d2, cfg):
-    live = [i["weight"] for i in infants
-            if _in(i.get("birth_date"), d1, d2) and i.get("alive") and i.get("weight")]
-    return _rate("lbw", sum(1 for w in live if w < cfg.lbw_grams), len(live), cfg)
+    live = live_weighed(infants, d1, d2)
+    return _rate("lbw", sum(1 for i in live if i["weight"] < cfg.lbw_grams), len(live), cfg)
 
 
-def rate_postnatal(pregs, pnc, d1, d2, cfg):
-    """ตัวหาร = คลอดในช่วงและพ้นหลังคลอด 42 วัน ณ d2 · ตัวตั้ง = ได้ดูแลครบทั้ง 3 ช่วง"""
+def postnatal_base(pregs, pnc, d1, d2):
+    """(ตัวหาร, ฟังก์ชันตัวตั้ง) — ตัวหาร = คลอดในช่วงและพ้นหลังคลอด 42 วัน ณ d2 · ตัวตั้ง = ได้ดูแลครบทั้ง 3 ช่วง"""
     days = defaultdict(set)
     by = {p["anc_id"]: p for p in pregs}
     for c in pnc:
@@ -184,14 +204,23 @@ def rate_postnatal(pregs, pnc, d1, d2, cfg):
         if p and p.get("labor_date") and c.get("date"):
             days[c["anc_id"]].add((c["date"] - p["labor_date"]).days)
     den = [p for p in _delivered(pregs, d1, d2) if (d2 - p["labor_date"]).days >= PNC_WINDOWS[-1][1]]
-    num = sum(1 for p in den if all(any(lo <= x <= hi for x in days[p["anc_id"]]) for lo, hi in PNC_WINDOWS))
-    return _rate("postnatal", num, len(den), cfg)
+    return den, lambda p: all(any(lo <= x <= hi for x in days[p["anc_id"]]) for lo, hi in PNC_WINDOWS)
+
+
+def rate_postnatal(pregs, pnc, d1, d2, cfg):
+    den, ok = postnatal_base(pregs, pnc, d1, d2)
+    return _rate("postnatal", sum(1 for p in den if ok(p)), len(den), cfg)
+
+
+def iodine_base(pregs, visits, d1, d2):
+    """ครรภ์ที่มาฝากครรภ์ที่ รพ. ในช่วง (Workload)"""
+    came = {v["anc_id"] for v in visits if not v.get("precare") and _in(v.get("date"), d1, d2)}
+    return [p for p in pregs if p["anc_id"] in came]
 
 
 def rate_iodine(pregs, visits, d1, d2, cfg):
     """ตัวหาร = ครรภ์ที่มาฝากครรภ์ที่ รพ. ในช่วง (Workload) · ตัวตั้ง = ได้ยาเม็ดที่มีไอโอดีนระหว่างตั้งครรภ์"""
-    came = {v["anc_id"] for v in visits if not v.get("precare") and _in(v.get("date"), d1, d2)}
-    den = [p for p in pregs if p["anc_id"] in came]
+    den = iodine_base(pregs, visits, d1, d2)
     return _rate("iodine", sum(1 for p in den if p.get("has_iodine")), len(den), cfg)
 
 
@@ -251,7 +280,7 @@ def by_age(pregs, visits, d1, d2, cfg, area=None):
     return out
 
 
-def _pregnant_on(p, day):
+def pregnant_on(p, day):
     start = p.get("lmp") or p.get("register_date")
     if start is None or p.get("register_date") is None or p["register_date"] > day:
         return False
@@ -262,8 +291,8 @@ def _pregnant_on(p, day):
 
 def tracking(pregs, visits, d2):
     vmap = _by_anc(visits)
-    open_ = [p for p in pregs if _pregnant_on(p, d2)]
-    early = sum(1 for p in open_ if (g := _first_ga(p, vmap.get(p["anc_id"], []))) is not None and g <= 12)
+    open_ = [p for p in pregs if pregnant_on(p, d2)]
+    early = sum(1 for p in open_ if is_early12(p, vmap.get(p["anc_id"], [])))
     return {"open": len(open_), "early12_so_far": early}
 
 
@@ -511,6 +540,22 @@ COMPLICATIONS = (("cx_htn", "ความดันโลหิตสูง / ค
 PRETERM_DAYS = 37 * 7
 
 
+def is_preterm(p):
+    return (p["labor_date"] - p["lmp"]).days < PRETERM_DAYS
+
+
+def is_asphyxia(i, cfg):
+    return bool(i.get("asphyxia") or (i.get("apgar1") is not None and i["apgar1"] < cfg.asphyxia_apgar))
+
+
+def died_in_window(p, d1, d2, cfg):
+    """มารดาเสียชีวิตระหว่างตั้งครรภ์ถึงหลังคลอด cfg.postpartum_days วัน และตายในช่วง d1–d2"""
+    dd, lab = p.get("death_date"), p.get("labor_date")
+    start = p.get("lmp") or p.get("register_date")
+    end = lab + timedelta(days=cfg.postpartum_days) if lab else None
+    return bool(dd and start and start <= dd and (end is None or dd <= end) and _in(dd, d1, d2))
+
+
 def outcomes(pregs, infants, risk_types, d1, d2, cfg, area=None):
     """ผลลัพธ์ในช่วง: ครรภ์เสี่ยง (ในรายใหม่) · ผลที่ใช้ครรภ์ที่คลอดเป็นฐาน (ตาม area) · ทารกเกิดใน รพ.
 
@@ -519,11 +564,11 @@ def outcomes(pregs, infants, risk_types, d1, d2, cfg, area=None):
     new = [p for p in pregs if _in(p.get("register_date"), d1, d2)]
     delivered = _delivered(pregs, d1, d2, area)
     dated = [p for p in delivered if p.get("lmp")]
-    preterm = _rate("preterm", sum(1 for p in dated if (p["labor_date"] - p["lmp"]).days < PRETERM_DAYS), len(dated), cfg)
+    preterm = _rate("preterm", sum(1 for p in dated if is_preterm(p)), len(dated), cfg)
 
     born = [i for i in infants if _in(i.get("birth_date"), d1, d2)]
     live = [i for i in born if i.get("alive")]
-    asph = sum(1 for i in live if i.get("asphyxia") or (i.get("apgar1") is not None and i["apgar1"] < cfg.asphyxia_apgar))
+    asph = sum(1 for i in live if is_asphyxia(i, cfg))
     per1000 = round(asph * 1000 / len(live), 1) if live else None
     target = cfg.targets.get("asphyxia")
     asphyxia = {"num": asph, "den": len(live), "value": per1000, "target": target,
@@ -537,12 +582,6 @@ def outcomes(pregs, infants, risk_types, d1, d2, cfg, area=None):
         if code and code != cfg.hospcode:
             places.setdefault(code, {"code": code, "name": p.get("labour_place") or code, "n": 0})["n"] += 1
 
-    def died_in_window(p):
-        dd, lab = p.get("death_date"), p.get("labor_date")
-        start = p.get("lmp") or p.get("register_date")
-        end = lab + timedelta(days=cfg.postpartum_days) if lab else None
-        return bool(dd and start and start <= dd and (end is None or dd <= end) and _in(dd, d1, d2))
-
     return {
         "risk": _rate("risk", sum(1 for p in new if p.get("has_risk")), len(new), cfg),
         "risk_types": sorted(risk_types, key=lambda r: -r["n"])[:5],
@@ -552,7 +591,7 @@ def outcomes(pregs, infants, risk_types, d1, d2, cfg, area=None):
                   "top": sorted(places.values(), key=lambda x: (-x["n"], x["code"]))[:5]},
         "bba": sum(1 for i in born if str(i.get("delivery_type") or "") in cfg.bba_types),
         "stillbirth": sum(1 for i in born if not i.get("alive")),
-        "maternal_death": sum(1 for p in pregs if died_in_window(p)),
+        "maternal_death": sum(1 for p in pregs if died_in_window(p, d1, d2, cfg)),
         "complications": [{"key": k, "label": label, **_rate(k, sum(1 for p in delivered if p.get(k)), len(delivered), cfg)}
                           for k, label in COMPLICATIONS],
     }

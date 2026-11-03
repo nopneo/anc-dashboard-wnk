@@ -22,6 +22,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("ANC_VILLAGE_CSV", str(m))
     monkeypatch.delenv("ANC_DATA_AUDITED", raising=False)
     appmod._cache._data.clear()
+    appmod._raw._data.clear()
     appmod.app.config["TESTING"] = True
     return appmod.app.test_client()
 
@@ -94,6 +95,7 @@ def test_banner_shown_then_hidden_in_print_and_audited(client, fake_data, monkey
     assert "audit-bar" not in _html(client, "/?d1=2026-01-01&d2=2026-06-30&print=1")
     monkeypatch.setenv("ANC_DATA_AUDITED", "1")
     appmod._cache._data.clear()
+    appmod._raw._data.clear()
     assert "audit-bar" not in _html(client)
 
 

@@ -1,0 +1,118 @@
+from io import BytesIO
+
+import pytest
+from openpyxl import load_workbook
+
+import app as appmod
+import queries
+import store
+from test_app import _patch, _preg
+from test_list_auth import _csrf, login
+
+Q = "d1=2026-01-01&d2=2026-06-30&scope=all"
+
+
+@pytest.fixture
+def client(monkeypatch, tmp_path):
+    m = tmp_path / "village_pcu.csv"
+    m.write_text("tmbpart,tambon,moo,village,hospcode,pcu\n01,วังน้ำเขียว,1,ศาลเจ้าพ่อ,03929,รพ.สต.ทดสอบ\n",
+                 encoding="utf-8")
+    monkeypatch.setenv("ANC_VILLAGE_CSV", str(m))
+    monkeypatch.setattr(store, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(store, "DB_PATH", str(tmp_path / "anc.sqlite"))
+    monkeypatch.setattr(store, "_ready", False)
+    monkeypatch.setattr(appmod.app, "secret_key", "test-secret")
+    monkeypatch.delenv("ANC_LIST_LAN_ONLY", raising=False)
+    appmod._cache._data.clear()
+    appmod._raw._data.clear()
+    appmod.app.config["TESTING"] = True
+    store.add_user("nurse1", "secret-pass", "พยาบาล 1")
+    store.add_user("pcu1", "secret-pass", "รพ.สต. 1", "03929")
+    pregs = [dict(_preg(i, a, v), hn=f"HN{i}")
+             for i, (a, v) in enumerate([(14, "30250101"), (25, "30250101"), (37, "99999999"),
+                                          (18, "30250101"), (30, None), (22, "30250101")], 1)]
+    visits = [{"anc_id": 1, "date": pregs[0]["lmp"].replace(month=10, day=20), "ga": 7, "precare": False}]
+    _patch(monkeypatch, pregs, visits)
+    monkeypatch.setattr(queries, "names", lambda hns: {h: {"name": f"นางทดสอบ {h}", "addr": "1 ม.1"} for h in hns})
+    return appmod.app.test_client()
+
+
+def page(client, url):
+    r = client.get(url)
+    assert r.status_code == 200, r.status_code
+    return r.get_data(as_text=True)
+
+
+def test_list_shows_whole_denominator_with_names(client):
+    login(client)
+    html = page(client, f"/list?k=early12&{Q}")
+    assert html.count('class="row"') == 6                 # ตัวหาร = ครรภ์ที่คลอดในช่วงทั้ง 6
+    assert "นางทดสอบ HN1" in html and "HN6" in html
+    assert "ฝากครรภ์ครั้งแรก ≤ 12 สัปดาห์" in html
+    a = store.audit()[0]
+    assert a["action"] == "view_list" and "k=early12" in a["detail"] and "n=6" in a["detail"]
+    assert client.get(f"/list?k=early12&{Q}").headers["Cache-Control"] == "no-store"
+
+
+def test_only_filter_and_search(client):
+    login(client)
+    assert page(client, f"/list?k=early12&only=in&{Q}").count('class="row"') == 1
+    assert page(client, f"/list?k=early12&only=out&{Q}").count('class="row"') == 5
+    assert page(client, f"/list?k=early12&q=HN2&{Q}").count('class="row"') == 1
+
+
+def test_pcu_user_sees_only_own_area(client):
+    login(client, "pcu1")
+    html = page(client, f"/list?k=new&{Q}&pcu=out")       # ขอเขตอื่นก็ได้เฉพาะเขตตัวเอง
+    assert html.count('class="row"') == 4 and "HN3" not in html
+
+
+def test_unknown_key_is_404(client):
+    login(client)
+    assert client.get(f"/list?k=bogus&{Q}").status_code == 404
+
+
+def test_visit_lists_show_missing_ga_ranges(client):
+    login(client)
+    assert "ช่วงที่ยังขาด" in page(client, f"/list?k=visit5&{Q}")
+    assert "ช่วงที่ยังขาด" not in page(client, f"/list?k=dt&{Q}")
+
+
+def test_excel_export_matches_list_and_is_audited(client):
+    login(client)
+    r = client.get(f"/list/export.xlsx?k=early12&only=out&{Q}")
+    assert r.status_code == 200 and r.mimetype.endswith("spreadsheetml.sheet")
+    assert r.headers["Cache-Control"] == "no-store"
+    ws = load_workbook(BytesIO(r.data)).worksheets[0]
+    rows = list(ws.values)
+    assert rows[0][0] == "ชื่อ-สกุล" and len(rows) == 1 + 5
+    assert store.audit()[0]["action"] == "export_list"
+
+
+def test_excel_by_pcu_has_sheet_per_unit(client):
+    login(client)
+    r = client.get(f"/list/export.xlsx?k=new&by_pcu=1&{Q}")
+    names = load_workbook(BytesIO(r.data)).sheetnames
+    assert names[0] == "รวม" and "รพ.สต.ทดสอบ" in names and "นอกเขตอำเภอ" in names
+
+
+def test_export_requires_login(client):
+    assert client.get(f"/list/export.xlsx?k=new&{Q}").status_code == 302
+
+
+def test_dashboard_numbers_link_to_list_but_not_in_print_mode(client):
+    html = page(client, f"/?{Q}")
+    assert 'href="/list?k=early12&amp;d1=2026-01-01' in html
+    assert "/list?" not in page(client, f"/?{Q}&print=1")
+    assert "นางทดสอบ" not in html                          # ชื่อไม่มีบนแดชบอร์ด
+
+
+def test_no_links_when_list_disabled(client, monkeypatch):
+    monkeypatch.setattr(appmod.app, "secret_key", None)
+    assert "/list?" not in page(client, f"/?{Q}")
+
+
+def test_logout_button_shown_on_list(client):
+    login(client)
+    html = page(client, f"/list?k=new&{Q}")
+    assert "พยาบาล 1" in html and 'action="/logout"' in html and _csrf(client) in html

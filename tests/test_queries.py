@@ -86,7 +86,7 @@ def test_infants_alive_and_village(fake_fetch):
                         "amppart": None, "tmbpart": None, "moopart": None}]
     i = queries.infants(D1, D2)
     assert i[0] == {"birth_date": date(2026, 2, 1), "weight": 2400, "alive": True, "village": "30250211",
-                    "apgar1": None, "asphyxia": False, "delivery_type": None}
+                    "apgar1": None, "asphyxia": False, "delivery_type": None, "hn": None}
     assert i[1]["alive"] is False and i[1]["weight"] is None
 
 
@@ -260,3 +260,26 @@ def test_risk_text_searches_the_field_that_fits_each_group(fake_fetch):
     assert "q.pmh_txt regexp %(t_pre_dm)s" in sql        # โรคประจำตัว: PMH เท่านั้น (HPI มีคำว่าเบาหวานจากการตรวจคัดกรอง)
     assert "q.all_txt regexp %(t_prev_preterm)s" in sql  # ประวัติอดีต: HPI + PMH
     assert "q.hpi_txt regexp %(t_twin)s" in sql          # ภาวะปัจจุบัน: HPI
+
+
+def test_infants_carry_mother_hn(fake_fetch):
+    fake_fetch.rows = [{"birth_date": "2026-03-01", "weight": "3000", "dead": "N", "hn": "0001234"}]
+    assert queries.infants(D1, D2)[0]["hn"] == "0001234"
+    assert "il.hn" in fake_fetch.calls[0][0]
+
+
+def test_names_batches_and_formats(fake_fetch):
+    fake_fetch.rows = [{"hn": "001", "pname": "นาง", "fname": "สมศรี", "lname": "ใจดี", "addrpart": "12",
+                        "moopart": "3"}]
+    out = queries.names(["001", None, "001"] + [str(i) for i in range(600)])
+    assert out["001"] == {"name": "นางสมศรี ใจดี", "addr": "12 ม.3"}
+    assert len(fake_fetch.calls) == 2                      # ทีละ 500 HN · ตัด None และซ้ำ
+    assert queries.names([]) == {}
+
+
+def test_sql_has_no_line_comments():
+    # โหมด ssh ต่อ SQL เป็นบรรทัดเดียว — "--" จะตัดส่วนที่เหลือทิ้งทั้งหมด
+    for name in dir(queries):
+        v = getattr(queries, name)
+        if isinstance(v, str) and "select" in v.lower():
+            assert "-- " not in v, name

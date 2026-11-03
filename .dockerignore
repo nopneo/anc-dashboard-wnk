@@ -12,6 +12,8 @@ docs
 tests
 .github
 village_pcu.csv
+# บัญชีผู้ใช้ + audit log ของหน้ารายชื่อ — ห้ามติดไปใน image (mount เป็น volume แทน)
+data
 *.jpg
 !static/img/*.jpg
 # โลโก้/ภาพพื้นหลังของ รพ.ผู้พัฒนา — image กลางใช้โลโก้กลาง static/img/logo.png

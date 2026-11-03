@@ -103,3 +103,19 @@ def test_main_query_failure_stays_bad(monkeypatch):
         "completeness": [], "n_pregs": 0})
     rows = setup_check.run(fetch=fake(), audit=True)
     assert any(r[0] == "bad" and "ดึงทะเบียนครรภ์" in r[1] for r in rows)
+
+
+def test_list_page_states(tmp_path, monkeypatch):
+    import store
+    monkeypatch.setattr(store, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(store, "DB_PATH", str(tmp_path / "anc.sqlite"))
+    monkeypatch.setattr(store, "_ready", False)
+    monkeypatch.delenv("ANC_SECRET_KEY", raising=False)
+    row = lambda: next(r for r in setup_check._list_check() if "หน้ารายชื่อ" in r[1])
+    assert row()[0] == "info"                                 # ไม่ตั้งกุญแจ = ปิด
+    monkeypatch.setenv("ANC_SECRET_KEY", "x" * 64)
+    assert row()[0] == "warn" and "adduser" in row()[2]       # เปิดแต่ยังไม่มีบัญชี
+    store.add_user("a", "secret-pass", "A")
+    assert row()[0] == "ok"
+    monkeypatch.setenv("ANC_SECRET_KEY", "short")
+    assert row()[0] == "warn"

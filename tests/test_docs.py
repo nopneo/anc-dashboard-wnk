@@ -29,11 +29,17 @@ def test_dockerfile_ships_setup_check():
 def test_dist_includes_setup_check_and_example_map():
     t = read("build_dist.py")
     assert '"setup_check.py"' in t and '"village_pcu.example.csv"' in t and '"metrics.py"' in t and '"config.py"' in t
+    # ทุกโมดูลที่ app.py / manage.py import ต้องอยู่ในชุดติดตั้ง ไม่งั้นรันไม่ขึ้น
+    local = {f[:-3] for f in os.listdir(ROOT) if f.endswith(".py")}
+    for f in ("app.py", "manage.py"):
+        for mod in re.findall(r"^(?:import|from) (\w+)", read(f), re.M):
+            if mod in local:
+                assert f'"{mod}.py"' in t, mod
 
 
 def test_env_example_lists_all_config_keys():
     used = set()
-    for f in ("config.py", "app.py", "db.py", "render.py", "setup_check.py"):
+    for f in ("config.py", "app.py", "db.py", "render.py", "setup_check.py", "store.py"):
         used |= set(re.findall(r'"(ANC_[A-Z0-9_]+)"', read(f)))
     used |= {f"ANC_TARGET_{k}" for k in ("EARLY12", "5VISIT", "DT", "DENTAL", "ANEMIA", "LBW")}
     example = read(".env.example")

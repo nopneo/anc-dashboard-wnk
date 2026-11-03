@@ -107,6 +107,22 @@ copy .env.example .env ; notepad .env
 | `ANC_HOSPCODE` | รหัส 5 หลักของ รพ. (ค่าเริ่มต้น 10894) — หมู่ที่ รพ. ดูแลเองเป็นแถว “เขต รพ.” |
 | `ANC_LAN_NETS`, `ANC_CHECK_OPEN` | ใครเปิดหน้า `/check` ได้ |
 
+### หน้ารายชื่อ (ไม่บังคับ)
+
+ตัวเลขบนแดชบอร์ดกดดูรายชื่อและส่งออก Excel ได้เมื่อเปิดใช้ — **มีข้อมูลส่วนบุคคล** ใช้บัญชีรายคนเท่านั้น
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"     # ใส่ใน .env เป็น ANC_SECRET_KEY=...
+python manage.py adduser somchai --display "สมชาย ใจดี"                    # เห็นทุก รพ.สต.
+python manage.py adduser pcu02840 --display "รพ.สต.ศาลเจ้าพ่อ" --hospcode 02840   # เห็นเฉพาะเขตตัวเอง
+python manage.py users | passwd <ชื่อ> | disable <ชื่อ> | audit --user <ชื่อ>
+```
+
+- บัญชีและ audit log อยู่ที่ `data/anc.sqlite` (`ANC_DATA_DIR`) — สำรองไฟล์นี้ · ผู้ใช้ที่รัน service ต้องเขียนโฟลเดอร์นี้ได้
+- เปิดผ่าน https ให้ตั้ง `ANC_COOKIE_SECURE=1` · อยากให้เปิดได้เฉพาะใน รพ. ตั้ง `ANC_LIST_LAN_ONLY=1`
+- Docker: mount `data/` เป็น volume (`-v anc-data:/app/data`) ไม่งั้นบัญชีหายเมื่อสร้าง container ใหม่
+- ไม่ตั้ง `ANC_SECRET_KEY` = ไม่มีหน้า login/รายชื่อ แดชบอร์ดตัวเลขใช้ได้ตามเดิม
+
 ## 5. ปรับให้ตรงกับข้อมูลของโรงพยาบาล (หน้า `/check`)
 
 เปิด `http://<เครื่อง>:6300/check` จากเครื่องในโรงพยาบาล หน้านี้แสดงเฉพาะจำนวนนับ ไม่มีข้อมูลรายคน

@@ -132,6 +132,42 @@ def _calc(key, p, hits, cfg):
     return (bmi < cfg.risk_bmi_low if key == "bmi_low" else bmi >= cfg.risk_bmi_high), True
 
 
+def item_sources(it, p, hits, cfg):
+    """(แหล่งที่พบข้อนี้ในครรภ์ p เช่น {"F", "D"}, มีข้อมูลพอตัดสิน?)"""
+    i, key, src, known = p["anc_id"], it["key"], set(), True
+    if it["calc"]:
+        hit, known = _calc(key, p, hits, cfg)
+        if hit:
+            src.add("C")
+    if it["form"] and hits["form"].get(i, set()) & set(it["form"]):
+        src.add("F")
+    dx_codes = set(cfg.risk_dx.get(key, ()))
+    if dx_codes and hits["dx"].get(i, set()) & dx_codes:
+        src.add("D")
+    if key in hits["text"].get(i, set()) and cfg.risk_text.get(key):
+        src.add("T")
+    return src, known
+
+
+def flags(pregs, hits, cfg):
+    """{anc_id: {key: แหล่ง}} ข้อเสี่ยงที่พบรายครรภ์ (รวมข้อเสริมจากฟอร์ม · แหล่ง = "F") — ใช้ในหน้ารายชื่อ"""
+    out = {}
+    for p in pregs:
+        found = {}
+        for it in ITEMS:
+            src, _ = item_sources(it, p, hits, cfg)
+            if src:
+                found[it["key"]] = src
+        for key, fid, _ in EXTRAS:
+            if fid in hits["form"].get(p["anc_id"], set()):
+                found[key] = {"F"}
+        out[p["anc_id"]] = found
+    return out
+
+
+LABELS = {**{it["key"]: it["label"] for it in ITEMS}, **{k: lab for k, _, lab in EXTRAS}}
+
+
 def summarize(pregs, hits, cfg):
     """pregs = ครรภ์รายใหม่ในช่วง · hits = {"form","dx","text","body"} จาก queries.risk_hits"""
     den = len(pregs)
@@ -141,27 +177,14 @@ def summarize(pregs, hits, cfg):
         key = it["key"]
         by = Counter()
         found, known = set(), 0
-        dx_codes = set(cfg.risk_dx.get(key, ()))
         for p in pregs:
-            i = p["anc_id"]
-            src = set()
-            if it["calc"]:
-                hit, ok = _calc(key, p, hits, cfg)
-                known += ok
-                if hit:
-                    src.add("C")
-            else:
-                known += 1
-            if it["form"] and hits["form"].get(i, set()) & set(it["form"]):
-                src.add("F")
-            if dx_codes and hits["dx"].get(i, set()) & dx_codes:
-                src.add("D")
-            if key in hits["text"].get(i, set()) and cfg.risk_text.get(key):
-                src.add("T")
+            src, ok = item_sources(it, p, hits, cfg)
+            known += ok
             if src:
-                found.add(i)
+                found.add(p["anc_id"])
                 by.update(src)
-                flagged.setdefault(i, set()).add(key)
+                flagged.setdefault(p["anc_id"], set()).add(key)
+        dx_codes = set(cfg.risk_dx.get(key, ()))
         avail = [s for s, on in (("F", it["form"]), ("C", it["calc"]), ("D", dx_codes),
                                  ("T", cfg.risk_text.get(key))) if on]
         items.append({**it, "sources": avail, "n": len(found), "pct": _pct(len(found), den), "known": known,
