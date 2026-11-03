@@ -360,6 +360,14 @@ def _audit_flags():
 LOGIN_MAX_USER, LOGIN_MAX_IP, LOGIN_WINDOW = 10, 30, 15
 
 
+PASSKEY_USER = store.PASSKEY_USER
+
+
+def passkey_mode():
+    """ANC_LIST_PASSKEY=1 = ใส่รหัสกลางตัวเดียว (ไม่มีชื่อผู้ใช้) · ตั้งรหัสด้วย python manage.py passkey"""
+    return os.getenv("ANC_LIST_PASSKEY", "0") == "1"
+
+
 def list_enabled():
     return bool(app.secret_key)
 
@@ -409,7 +417,7 @@ def _check_csrf():
 @app.context_processor
 def _list_ctx():
     return {"list_on": list_enabled(), "csrf_token": _csrf_token if list_enabled() else (lambda: ""),
-            "user": g.get("user")}
+            "user": g.get("user"), "passkey_mode": passkey_mode()}
 
 
 def _safe_next(nxt):
@@ -427,7 +435,7 @@ def login():
     _list_gate()
     if request.method == "POST":
         _check_csrf()
-        username = request.form.get("username", "").strip()[:64]
+        username = PASSKEY_USER if passkey_mode() else request.form.get("username", "").strip()[:64]
         by_user, by_ip = store.recent_failures(username, _client_ip(), LOGIN_WINDOW)
         if by_user >= LOGIN_MAX_USER or by_ip >= LOGIN_MAX_IP:
             flash(f"ใส่รหัสผิดหลายครั้งเกินไป ลองใหม่อีก {LOGIN_WINDOW} นาที")
@@ -441,7 +449,7 @@ def login():
             audit("login")
             return redirect(_safe_next(request.args.get("next") or "") or url_for("dashboard"))
         store.log(username, "login_fail", ip=_client_ip())
-        flash("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+        flash("รหัสไม่ถูกต้อง" if passkey_mode() else "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
     return render_template("login.html")
 
 

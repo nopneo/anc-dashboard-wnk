@@ -75,6 +75,10 @@ def _now():
 
 # ---------------------------------------------------------------- users
 
+#: บัญชีกลางของโหมด passkey (ANC_LIST_PASSKEY=1) — รหัสเก็บเป็น hash เหมือนบัญชีอื่น
+PASSKEY_USER = "passkey"
+
+
 def add_user(username, password, display, hospcode="all", is_admin=False):
     # pbkdf2:sha256 — scrypt ค่า default verify ไม่ผ่านบน AlmaLinux/OpenSSL ของเซิร์ฟเวอร์ รพ.
     with conn() as c:

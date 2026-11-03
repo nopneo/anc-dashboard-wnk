@@ -119,3 +119,17 @@ def test_list_page_states(tmp_path, monkeypatch):
     assert row()[0] == "ok"
     monkeypatch.setenv("ANC_SECRET_KEY", "short")
     assert row()[0] == "warn"
+
+
+def test_list_page_passkey_mode(tmp_path, monkeypatch):
+    import store
+    monkeypatch.setattr(store, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(store, "DB_PATH", str(tmp_path / "anc.sqlite"))
+    monkeypatch.setattr(store, "_ready", False)
+    monkeypatch.setenv("ANC_SECRET_KEY", "x" * 64)
+    monkeypatch.setenv("ANC_LIST_PASSKEY", "1")
+    row = lambda: next(r for r in setup_check._list_check() if "หน้ารายชื่อ" in r[1])
+    store.add_user("a", "secret-pass", "A")                  # บัญชีรายคนไม่นับในโหมด passkey
+    assert row()[0] == "warn" and "manage.py passkey" in row()[2]
+    store.add_user(store.PASSKEY_USER, "secret-pass", "P")
+    assert row()[0] == "ok" and "passkey" in row()[2]

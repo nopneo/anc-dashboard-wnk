@@ -81,3 +81,37 @@ def test_session_cookie_has_own_name(client):
     # แอปอื่นบน wnkhos.go.th ใช้ cookie ชื่อ session (Path=/) — ชื่อซ้ำ = login ที่หนึ่งแล้วหลุดอีกที่
     r = client.get("/login")
     assert "anc_session=" in r.headers.get("Set-Cookie", "")
+
+
+@pytest.fixture
+def passkey_client(client, monkeypatch):
+    monkeypatch.setenv("ANC_LIST_PASSKEY", "1")
+    store.add_user(appmod.PASSKEY_USER, "passkey-123", "ผู้ใช้ใน รพ. (passkey)")
+    return client
+
+
+def test_passkey_login_page_has_no_username_field(passkey_client):
+    html = passkey_client.get("/login").get_data(as_text=True)
+    assert 'name="username"' not in html and 'name="password"' in html
+
+
+def test_passkey_login_success_and_audited_as_passkey(passkey_client):
+    r = passkey_client.post("/login?next=/list%3Fk%3Dnew",
+                            data={"csrf": _csrf(passkey_client), "password": "passkey-123"})
+    assert r.status_code == 302 and r.headers["Location"].endswith("/list?k=new")
+    assert store.audit()[0]["username"] == appmod.PASSKEY_USER
+    assert passkey_client.get("/list?k=new").status_code != 302
+
+
+def test_passkey_mode_ignores_personal_accounts(passkey_client):
+    # nurse1 มีอยู่แล้วจาก fixture client — โหมด passkey ใช้รหัสกลางตัวเดียว
+    r = passkey_client.post("/login", data={"csrf": _csrf(passkey_client), "username": "nurse1",
+                                            "password": "secret-pass"})
+    assert r.status_code == 200 and "ไม่ถูกต้อง" in r.get_data(as_text=True)
+
+
+def test_passkey_wrong_is_rate_limited(passkey_client):
+    for _ in range(appmod.LOGIN_MAX_USER):
+        passkey_client.post("/login", data={"csrf": _csrf(passkey_client), "password": "bad"})
+    r = passkey_client.post("/login", data={"csrf": _csrf(passkey_client), "password": "passkey-123"})
+    assert r.status_code == 429

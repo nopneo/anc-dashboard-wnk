@@ -119,6 +119,8 @@ python manage.py users | passwd <ชื่อ> | disable <ชื่อ> | audit 
 ```
 
 - บัญชีและ audit log อยู่ที่ `data/anc.sqlite` (`ANC_DATA_DIR`) — สำรองไฟล์นี้ · ผู้ใช้ที่รัน service ต้องเขียนโฟลเดอร์นี้ได้
+- **โหมด passkey** (รหัสกลางตัวเดียว ไม่ต้องมีบัญชีรายคน): ตั้ง `ANC_LIST_PASSKEY=1` + `ANC_LIST_LAN_ONLY=1` แล้ว `python manage.py passkey`
+  — audit log บันทึกเป็น `passkey` + IP เท่านั้น ระบุตัวคนไม่ได้ · เปลี่ยนรหัสเมื่อมีคนย้ายออก (รันคำสั่งเดิมซ้ำ)
 - เปิดผ่าน https ให้ตั้ง `ANC_COOKIE_SECURE=1` · อยากให้เปิดได้เฉพาะใน รพ. ตั้ง `ANC_LIST_LAN_ONLY=1`
 - Docker: mount `data/` เป็น volume (`-v anc-data:/app/data`) ไม่งั้นบัญชีหายเมื่อสร้าง container ใหม่
 - ไม่ตั้ง `ANC_SECRET_KEY` = ไม่มีหน้า login/รายชื่อ แดชบอร์ดตัวเลขใช้ได้ตามเดิม

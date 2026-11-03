@@ -2,6 +2,7 @@
 
   python manage.py adduser <username> --display "ชื่อ" [--hospcode 03929] [--admin]
   python manage.py passwd <username>
+  python manage.py passkey                 # ตั้ง/เปลี่ยนรหัสกลางของโหมด passkey (ANC_LIST_PASSKEY=1)
   python manage.py disable <username>      # ปิดบัญชี (ย้ายหน่วย/ลาออก) · enable = เปิดคืน
   python manage.py users
   python manage.py audit [--user somchai] [--limit 100]   # ใครเปิดดู/ส่งออกรายชื่อไหน เมื่อไร
@@ -43,6 +44,7 @@ def main(argv=None):
     a.add_argument("--display", required=True)
     a.add_argument("--hospcode", default="all", help="'all' หรือรหัส รพ.สต. ใน village_pcu.csv เช่น 03929")
     a.add_argument("--admin", action="store_true")
+    sub.add_parser("passkey")
     p = sub.add_parser("passwd")
     p.add_argument("username")
     for name in ("disable", "enable"):
@@ -58,6 +60,14 @@ def main(argv=None):
             sys.exit("ไม่รู้จักรหัส รพ.สต. นี้ใน village_pcu.csv: " + args.hospcode)
         store.add_user(args.username, _ask_password(), args.display, args.hospcode, args.admin)
         print("เพิ่มผู้ใช้แล้ว")
+    elif args.cmd == "passkey":
+        pw = _ask_password()
+        if store.set_password(store.PASSKEY_USER, pw):
+            store.set_active(store.PASSKEY_USER, True)
+            print("เปลี่ยนรหัส passkey แล้ว")
+        else:
+            store.add_user(store.PASSKEY_USER, pw, "ผู้ใช้ใน รพ. (passkey)")
+            print("ตั้งรหัส passkey แล้ว")
     elif args.cmd == "passwd":
         if not store.set_password(args.username, _ask_password()):
             sys.exit("ไม่พบผู้ใช้นี้")

@@ -67,9 +67,13 @@ def _list_check():
         users = [u for u in store.list_users() if u["active"]]
     except Exception as e:
         return [("bad", "หน้ารายชื่อ", f"เปิดฐานข้อมูลผู้ใช้ {store.DB_PATH} ไม่ได้: {type(e).__name__} — ตรวจสิทธิ์เขียนโฟลเดอร์ ANC_DATA_DIR")]
+    lan = " · เฉพาะใน รพ." if os.getenv("ANC_LIST_LAN_ONLY", "0") == "1" else ""
+    if os.getenv("ANC_LIST_PASSKEY", "0") == "1":
+        if not any(u["username"] == store.PASSKEY_USER for u in users):
+            return [("warn", "หน้ารายชื่อ", "โหมด passkey แต่ยังไม่ได้ตั้งรหัส — python manage.py passkey")]
+        return [("ok", "หน้ารายชื่อ", f"เปิดใช้ · โหมด passkey (รหัสกลาง){lan} · ดูประวัติการเปิดดู: python manage.py audit")]
     if not users:
         return [("warn", "หน้ารายชื่อ", "เปิดแล้วแต่ยังไม่มีบัญชี — python manage.py adduser <ชื่อ> --display \"ชื่อ\"")]
-    lan = " · เฉพาะใน รพ." if os.getenv("ANC_LIST_LAN_ONLY", "0") == "1" else ""
     return [("ok", "หน้ารายชื่อ", f"เปิดใช้ · บัญชี {len(users)} คน{lan} · ดูประวัติการเปิดดู: python manage.py audit")]
 
 
