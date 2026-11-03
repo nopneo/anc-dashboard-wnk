@@ -212,3 +212,51 @@ def test_risk_types(fake_fetch):
     assert queries.risk_types(D1, D2) == [{"name": "เคยผ่าคลอด", "n": 4}]
     sql, args = fake_fetch.calls[-1]
     assert "person_anc_classifying" in sql and args == {"d1": D1, "d2": D2}
+
+
+# ---------- คัดกรองครรภ์เสี่ยง 27 ข้อ ----------
+
+def test_risk_form_hits(fake_fetch):
+    fake_fetch.rows = [{"anc_id": "7", "item": "11"}, {"anc_id": "7", "item": "7"}, {"anc_id": "8", "item": "1"}]
+    assert queries.risk_form_hits(D1, D2) == {7: {"11", "7"}, 8: {"1"}}
+    sql, args = fake_fetch.calls[-1]
+    assert "person_anc_classifying" in sql and "check_value = 'Y'" in sql and args == {"d1": D1, "d2": D2}
+
+
+def test_risk_dx_hits_uses_codes_as_parameters(fake_fetch):
+    fake_fetch.rows = [{"anc_id": "7", "c3": "O30", "c4": "O301"}, {"anc_id": "7", "c3": "O44", "c4": "O441"}]
+    got = queries.risk_dx_hits(D1, D2, CFG)
+    assert got == {7: {"O30", "O301", "O44", "O441"}}
+    sql, args = fake_fetch.calls[-1]
+    assert "ovstdiag" in sql and "iptdiag" in sql and "O30" in args["codes"] and "O30" not in sql
+    assert args["d1"] == D1 and args["d2"] == D2
+
+
+def test_risk_text_hits_and_body(fake_fetch):
+    fake_fetch.rows = [{"anc_id": "7", "height": "158.5", "bw": "52", "t_twin": "1", "t_prev_preterm": "0",
+                        "t_pre_dm": None},
+                       {"anc_id": "8", "height": "", "bw": None, "t_twin": "0"}]
+    got = queries.risk_text_hits(D1, D2, CFG)
+    assert got["text"] == {7: {"twin"}}
+    assert got["body"] == {7: (158.5, 52.0), 8: (None, None)}
+    sql, args = fake_fetch.calls[-1]
+    assert "regexp_replace" in sql and "opdscreen" in sql
+    assert args["t_twin"].startswith("(?i)(") and "twin" in args["t_twin"] and "ครรภ์แฝด" not in sql
+    assert "ปฏิเสธ" in args["neg"]
+
+
+def test_risk_hits_bundles_all_sources(fake_fetch, monkeypatch):
+    monkeypatch.setattr(queries, "risk_form_hits", lambda d1, d2: {1: {"7"}})
+    monkeypatch.setattr(queries, "risk_dx_hits", lambda d1, d2, cfg: {1: {"O30"}})
+    monkeypatch.setattr(queries, "risk_text_hits", lambda d1, d2, cfg: {"text": {1: {"twin"}}, "body": {1: (150.0, 50.0)}})
+    assert queries.risk_hits(D1, D2, CFG) == {"form": {1: {"7"}}, "dx": {1: {"O30"}},
+                                              "text": {1: {"twin"}}, "body": {1: (150.0, 50.0)}}
+
+
+def test_risk_text_searches_the_field_that_fits_each_group(fake_fetch):
+    fake_fetch.rows = []
+    queries.risk_text_hits(D1, D2, CFG)
+    sql, _ = fake_fetch.calls[-1]
+    assert "q.pmh_txt regexp %(t_pre_dm)s" in sql        # โรคประจำตัว: PMH เท่านั้น (HPI มีคำว่าเบาหวานจากการตรวจคัดกรอง)
+    assert "q.all_txt regexp %(t_prev_preterm)s" in sql  # ประวัติอดีต: HPI + PMH
+    assert "q.hpi_txt regexp %(t_twin)s" in sql          # ภาวะปัจจุบัน: HPI

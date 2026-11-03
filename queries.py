@@ -22,6 +22,7 @@
 import re
 from datetime import date, datetime, timedelta
 
+import risk27
 from config import village_code
 from db import fetch, num
 
@@ -320,3 +321,92 @@ select coalesce(nullif(i.person_anc_classifying_item_name, ''), concat('ข้�
  where a.anc_register_date between %(d1)s and %(d2)s and c.check_value = 'Y'
  group by c.person_anc_classifying_item_id, i.person_anc_classifying_item_name""", {"d1": d1, "d2": d2})
     return [{"name": r.get("name") or "", "n": int(num(r.get("n")))} for r in rows]
+
+
+# ---------- คัดกรองครรภ์เสี่ยง 27 ข้อ (risk27.py) — หลักฐานรายครรภ์ในหน่วยความจำ ผลที่แสดงเป็นจำนวนนับเท่านั้น ----------
+
+_RISK_FROM = """
+  from person_anc a
+  join person pe on pe.person_id = a.person_id
+  left join patient pt on pt.hn = coalesce(nullif(pe.patient_hn, ''),
+        (select p2.hn from patient p2 where p2.cid = pe.cid and pe.cid <> '' limit 1))
+"""
+
+
+def risk_form_hits(d1, d2):
+    """ข้อที่ติ๊ก 'Y' ในแบบคัดกรองความเสี่ยง HOSxP ของครรภ์ที่ลงทะเบียนในช่วง → {anc_id: {item_id}}"""
+    out = {}
+    for r in fetch("""
+select c.person_anc_id anc_id, c.person_anc_classifying_item_id item
+  from person_anc_classifying c
+  join person_anc a on a.person_anc_id = c.person_anc_id
+ where a.anc_register_date between %(d1)s and %(d2)s and c.check_value = 'Y'""", {"d1": d1, "d2": d2}):
+        out.setdefault(int(num(r["anc_id"])), set()).add(str(r["item"]).strip())
+    return out
+
+
+def risk_dx_hits(d1, d2, cfg):
+    """Dx ICD-10 (OPD + IPD) ที่อยู่ในรหัสของ 27 ข้อ → {anc_id: {รหัส 3 และ 4 หลัก}}
+    รหัสหมวด O นับเฉพาะตั้งแต่ LMP · โรคเรื้อรังนับย้อนหลังได้ทั้งหมด · ทั้งคู่ถึงหลังคลอด 42 วัน"""
+    codes = _nonempty(sorted({c for v in cfg.risk_dx.values() for c in v}))
+    out = {}
+    for r in fetch("""
+select distinct a.person_anc_id anc_id, left(x.icd10, 3) c3, left(x.icd10, 4) c4
+""" + _RISK_FROM + """
+  join ovstdiag x on x.hn = pt.hn
+ where a.anc_register_date between %(d1)s and %(d2)s
+   and (left(x.icd10, 3) in %(codes)s or left(x.icd10, 4) in %(codes)s)
+   and x.vstdate <= coalesce(a.labor_date + interval 42 day, %(d2)s)
+   and (left(x.icd10, 1) <> 'O' or x.vstdate >= coalesce(a.lmp, a.anc_register_date))
+union
+select distinct a.person_anc_id, left(y.icd10, 3), left(y.icd10, 4)
+""" + _RISK_FROM + """
+  join ipt on ipt.hn = pt.hn
+  join iptdiag y on y.an = ipt.an
+ where a.anc_register_date between %(d1)s and %(d2)s
+   and (left(y.icd10, 3) in %(codes)s or left(y.icd10, 4) in %(codes)s)
+   and ipt.dchdate <= coalesce(a.labor_date + interval 42 day, %(d2)s)
+   and (left(y.icd10, 1) <> 'O' or ipt.dchdate >= coalesce(a.lmp, a.anc_register_date))""",
+                   {"d1": d1, "d2": d2, "codes": codes}):
+        out.setdefault(int(num(r["anc_id"])), set()).update(c for c in (r.get("c3"), r.get("c4")) if c)
+    return out
+
+
+def risk_text_hits(d1, d2, cfg):
+    """ค้นคำใน HPI/PMH (opdscreen) ของ visit ระหว่าง LMP ถึงวันคลอด หลังตัดประโยคที่ถูกปฏิเสธ
+    + ส่วนสูง/น้ำหนักของ visit แรก (ใช้แทนน้ำหนักก่อนตั้งครรภ์) → {"text": {anc_id: {key}}, "body": {anc_id: (cm, kg)}}"""
+    keys = [k for k, v in cfg.risk_text.items() if v]
+    group_of = {it["key"]: it["group"] for it in risk27.ITEMS}
+    args = {"d1": d1, "d2": d2, "neg": "(?i)" + risk27.NEGATION}
+    flags = ""
+    for k in keys:
+        args[f"t_{k}"] = "(?i)(" + cfg.risk_text[k] + ")"
+        flags += f",\n       max(q.{risk27.TEXT_FIELD[group_of[k]]}_txt regexp %(t_{k})s) t_{k}"
+    sql = ("""
+select q.anc_id,
+       substring_index(group_concat(if(q.height > 0, q.height, null) order by q.vstdate, q.vn separator ','), ',', 1) height,
+       substring_index(group_concat(if(q.bw > 0, q.bw, null) order by q.vstdate, q.vn separator ','), ',', 1) bw"""
+           + flags + """
+  from (select a.person_anc_id anc_id, o.vstdate, o.vn, s.height, s.bw,
+               regexp_replace(concat_ws(' ', s.hpi, s.pmh), %(neg)s, ' ') all_txt,
+               regexp_replace(coalesce(s.pmh, ''), %(neg)s, ' ') pmh_txt,
+               regexp_replace(coalesce(s.hpi, ''), %(neg)s, ' ') hpi_txt
+""" + _RISK_FROM + """
+          join ovst o on o.hn = pt.hn
+               and o.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s)
+          join opdscreen s on s.vn = o.vn
+         where a.anc_register_date between %(d1)s and %(d2)s) q
+ group by q.anc_id""")
+    text, body = {}, {}
+    for r in fetch(sql, args):
+        i = int(num(r["anc_id"]))
+        found = {k for k in keys if _flag(r.get(f"t_{k}"))}
+        if found:
+            text[i] = found
+        body[i] = (_float(r.get("height")), _float(r.get("bw")))
+    return {"text": text, "body": body}
+
+
+def risk_hits(d1, d2, cfg):
+    t = risk_text_hits(d1, d2, cfg)
+    return {"form": risk_form_hits(d1, d2), "dx": risk_dx_hits(d1, d2, cfg), "text": t["text"], "body": t["body"]}

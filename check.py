@@ -9,6 +9,7 @@ from datetime import timedelta
 
 import metrics
 import queries
+import risk27
 from db import fetch, num
 
 #: คอลัมน์เวลาที่ใช้มีข้อมูลน้อยกว่านี้ (% ของ visit ANC) → bad และเสนอคอลัมน์อื่น
@@ -245,6 +246,22 @@ select left(icd10, 3) code, '' name, count(*) n from iptdiag y join ipt on ipt.a
                  "ผ่าตัดคลอดไม่ได้แสดง (ไม่พบรหัส O82 / หัตถการ 74.x ในข้อมูล) · GA คลอดคำนวณจาก LMP ใน person_anc")
 
 
+def _risk27(new, d1, d2, cfg):
+    res = risk27.summarize(new, queries.risk_hits(d1, d2, cfg), cfg)
+    names = {"F": "ฟอร์ม", "C": "คำนวณ", "D": "Dx", "T": "HPI/PMH"}
+    found = [{"code": f"ข้อ {it['num']}", "n": it["n"],
+              "name": it["label"] + " · " + (" ".join(f"{names[s]} {n}" for s, n in it["by_source"].items()) or "ไม่พบ")}
+             for it in res["items"]]
+    cx = [it for it in res["items"] if it["key"] in ("height_lt145", "bmi_low")]
+    hint = (f"ครรภ์รายใหม่ {res['den']} ราย · เข้าอย่างน้อย 1 ข้อ {res['any']['num']} ราย · "
+            f"มีส่วนสูง/น้ำหนักพอคำนวณ BMI {cx[-1]['known'] if cx else 0} ราย · "
+            "คำค้น HPI/PMH ตัดประโยคปฏิเสธออกก่อน จึงเป็นค่าประมาณ — ตรวจรายข้อว่ารหัส/คำค้นตรงกับการบันทึกของ รพ. นี้")
+    return _item("risk27", "คัดกรองครรภ์เสี่ยง 27 ข้อ: ฟอร์ม · Dx · คำค้น HPI/PMH · ส่วนสูง/BMI",
+                 "risk27.py: รหัส Dx และ regex ต่อข้อ · เกณฑ์อายุ/ส่วนสูง/BMI", found, "ok",
+                 "ANC_RISK_DX_<ข้อ> · ANC_RISK_TEXT_<ข้อ> · ANC_RISK_AGE_LOW/HIGH · ANC_RISK_HEIGHT_CM · ANC_RISK_BMI_LOW/HIGH",
+                 hint)
+
+
 def _dchstts(d1, d2, cfg):
     rows = fetch("""
 select infant_dchstts code, count(*) n from ipt_labour_infant
@@ -278,6 +295,7 @@ def audit(d1, d2, cfg, pcu_map):
                lambda: _quality_codes(d1, d2, cfg)),
         _guard("thal_codes", "คัดกรองธาลัสซีเมีย", "ANC_THAL_EXPORT_CODES", lambda: _thal(d1, d2, cfg)),
         _guard("outcome_codes", "ผลลัพธ์แม่และทารก", "ANC_ASPHYXIA_APGAR", lambda: _outcome_codes(d1, d2, cfg)),
+        _guard("risk27", "คัดกรองครรภ์เสี่ยง 27 ข้อ", "ANC_RISK_DX_* · ANC_RISK_TEXT_*", lambda: _risk27(new, d1, d2, cfg)),
         _pcu_item(new, pcu_map, cfg),
     ]
     return {"items": items, "completeness": completeness(pregs, infants, d1, d2, pcu_map, cfg),

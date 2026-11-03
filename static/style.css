@@ -175,6 +175,18 @@ table.t td.id { font-weight: 700; color: var(--navy); white-space: nowrap; }
 .otile small { color: var(--muted); font-size: 12px; }
 .otile.bad-tile { background: #fff1f1; border-color: #fecaca; }
 .otile.bad-tile b { color: #dc2626; }
+.otiles.o4 { grid-template-columns: repeat(4, 1fr); }
+.note { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
+.rtab { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.rtab td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.rtab .no { width: 24px; color: var(--muted); }
+.rtab .n { text-align: right; font-weight: 600; width: 36px; }
+.rtab .p { text-align: right; color: var(--muted); width: 52px; }
+.rtab .s { white-space: nowrap; text-align: right; width: 64px; }
+.rtab small { color: var(--muted); font-size: 11.5px; }
+.src { display: inline-block; min-width: 16px; text-align: center; font-size: 11px; font-weight: 600; border-radius: 4px;
+       background: #e3ebff; color: var(--navy); padding: 0 3px; margin-left: 2px; }
+.src.t { background: #fff3d6; color: #8a5a00; }
 .sub-h { font-size: 16px; color: var(--navy); margin-bottom: 6px; }
 .sub-h small { font-family: 'Sarabun'; font-weight: 400; font-size: 12.5px; color: var(--muted); }
 
@@ -231,7 +243,7 @@ body.print-mode .noprint { display: none !important; }
   .hdr .logo { width: 56px; height: 56px; }
   .hdr .title h1 { font-size: 22px; }
   .hdr .right { margin-left: 0; justify-content: flex-start; }
-  .kpis, .otiles { grid-template-columns: repeat(2, 1fr); }
+  .kpis, .otiles, .otiles.o4 { grid-template-columns: repeat(2, 1fr); }
   .kpi .v { font-size: 30px; }
   .g-211, .g-231, .g-21, .g-11 { grid-template-columns: 1fr; }
   .g-211 > :first-child { grid-column: auto; }

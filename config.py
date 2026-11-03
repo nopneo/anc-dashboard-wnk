@@ -18,6 +18,8 @@ except ImportError:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+import risk27  # noqa: E402  (ค่าเริ่มต้นของคัดกรองครรภ์เสี่ยง 27 ข้อ)
+
 #: คอลัมน์เวลาใน service_time ที่ยอมให้ใส่ลง SQL ได้ (ชื่อคอลัมน์ส่งเป็นพารามิเตอร์ไม่ได้)
 _TIME_COL = re.compile(r"vsttime|service([1-9]|1[0-9]|20)")
 
@@ -70,6 +72,14 @@ class Config:
     dx_gdm: tuple = ("O244",)
     dx_pph: tuple = ("O72",)
     dx_preterm: tuple = ("O60",)
+    #: คัดกรองครรภ์เสี่ยง 27 ข้อ (risk27.py): เกณฑ์ · รหัส Dx ต่อข้อ · regex คำค้น HPI/PMH ต่อข้อ
+    risk_age_low: int = 17
+    risk_age_high: int = 35
+    risk_height_cm: int = 145
+    risk_bmi_low: float = 18.5
+    risk_bmi_high: float = 25
+    risk_dx: dict = field(default_factory=lambda: dict(risk27.DEFAULT_DX))
+    risk_text: dict = field(default_factory=lambda: dict(risk27.DEFAULT_TEXT))
     postpartum_days: int = 42
     refer_dx_prefixes: tuple = ("O", "Z32", "Z33", "Z34", "Z35", "Z36")
     wait_from_col: str = "vsttime"
@@ -133,6 +143,13 @@ def load_config(env=os.environ):
         dx_gdm=_dx(g("ANC_DX_GDM")) or d.dx_gdm,
         dx_pph=_dx(g("ANC_DX_PPH")) or d.dx_pph,
         dx_preterm=_dx(g("ANC_DX_PRETERM")) or d.dx_preterm,
+        risk_age_low=int(_num(g("ANC_RISK_AGE_LOW"), d.risk_age_low)),
+        risk_age_high=int(_num(g("ANC_RISK_AGE_HIGH"), d.risk_age_high)),
+        risk_height_cm=int(_num(g("ANC_RISK_HEIGHT_CM"), d.risk_height_cm)),
+        risk_bmi_low=_num(g("ANC_RISK_BMI_LOW"), d.risk_bmi_low),
+        risk_bmi_high=_num(g("ANC_RISK_BMI_HIGH"), d.risk_bmi_high),
+        risk_dx={k: _dx(g(f"ANC_RISK_DX_{k.upper()}")) or v for k, v in risk27.DEFAULT_DX.items()},
+        risk_text={k: (g(f"ANC_RISK_TEXT_{k.upper()}") or "").strip() or v for k, v in risk27.DEFAULT_TEXT.items()},
         postpartum_days=int(_num(g("ANC_POSTPARTUM_DAYS"), d.postpartum_days)),
         refer_dx_prefixes=tuple(x.upper() for x in _list(g("ANC_REFER_DX_PREFIXES"))) or d.refer_dx_prefixes,
         wait_from_col=_col(g("ANC_WAIT_FROM_COL"), d.wait_from_col),

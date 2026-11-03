@@ -28,6 +28,7 @@ import check
 import db
 import render
 import metrics
+import risk27
 import queries
 from cache import TTLCache
 from config import PcuMapError, load_config, load_village_pcu
@@ -214,8 +215,9 @@ def build_context(d1, d2, scope="area"):
     ind = metrics.indicators(pregs, visits, infants, waits, d1, d2, cfg, pnc=pnc, area=area)
     age = metrics.by_age(pregs, visits, d1, d2, cfg, area=area)
 
-    risk_types = _safe(errors, "risk", lambda: queries.risk_types(d1, d2), [])
-    outcome = metrics.outcomes(pregs, infants, risk_types, d1, d2, cfg, area=area)
+    outcome = metrics.outcomes(pregs, infants, [], d1, d2, cfg, area=area)
+    new = [p for p in pregs if p.get("register_date") and d1 <= p["register_date"] <= d2]
+    risk27_res = _safe(errors, "risk27", lambda: risk27.summarize(new, queries.risk_hits(d1, d2, cfg), cfg), None)
     refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(queries.refers(d1, d2), pregs, cfg), [])
     refer = metrics.refer_summary(refer_rows, d1, d2)
 
@@ -232,7 +234,7 @@ def build_context(d1, d2, scope="area"):
         "trend": metrics.monthly_trend(pregs, visits, d1, d2),
         "pcu": pcu, "pcu_missing": pcu_map is None and "pcu" not in errors,
         "unmapped": unmapped, "refer": refer,
-        "outcome": outcome,
+        "outcome": outcome, "risk27": risk27_res, "risk_groups": risk27.GROUPS,
         "alerts": metrics.alerts(ind, pcu, age, unmapped, outcome) if "main" not in errors else [],
         "errors": errors, "audited": cfg.data_audited, "cfg_targets": cfg.targets,
         "hct_cutoff": cfg.hct_cutoff, "hct_late_ga": cfg.hct_late_ga, "lbw_grams": cfg.lbw_grams,

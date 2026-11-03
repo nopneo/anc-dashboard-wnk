@@ -38,6 +38,8 @@ def _preg(i, village="30250101", labor=date(2026, 3, 1), lmp=date(2025, 6, 1), h
 @pytest.fixture
 def data(monkeypatch):
     monkeypatch.setattr(queries, "pregnancies", lambda d1, d2, cfg: [_preg(1), _preg(2, "11111111"), _preg(3, None)])
+    monkeypatch.setattr(queries, "risk_hits", lambda d1, d2, cfg: {"form": {1: {"7"}}, "dx": {1: {"O30"}},
+                                                                    "text": {2: {"prev_preterm"}}, "body": {}})
     monkeypatch.setattr(queries, "infants", lambda d1, d2, *a: [{"birth_date": D1, "weight": 3000, "alive": True,
                                                              "village": None}])
     monkeypatch.setattr(queries, "refers", lambda d1, d2: [])
@@ -192,3 +194,21 @@ def test_audit_outcome_codes(monkeypatch, data):
                                                 "from iptdiag": [{"code": "O60", "name": "", "n": "24"}]}))
     it = _item(check.audit(D1, D2, CFG, None), "outcome_codes")
     assert it["env"].startswith("ANC_ASPHYXIA_APGAR") and any(f["code"] == "O60" for f in it["found"])
+
+
+def test_audit_lists_the_27_risk_items_with_counts(monkeypatch, data):
+    monkeypatch.setattr(check, "fetch", Router({}))
+    r = _item(check.audit(D1, D2, CFG, None), "risk27")
+    assert len(r["found"]) == 27
+    twin = next(f for f in r["found"] if "ครรภ์แฝด" in f["name"])
+    assert twin["n"] == 1 and "ฟอร์ม 1" in twin["name"] and "Dx 1" in twin["name"]
+    assert "ANC_RISK_TEXT" in r["env"] and "ตัดประโยคปฏิเสธ" in r["hint"]
+
+
+def test_audit_risk27_failure_is_a_warning(data, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(queries, "risk_hits", boom)
+    monkeypatch.setattr(check, "fetch", Router({}))
+    assert _item(check.audit(D1, D2, CFG, None), "risk27")["status"] == "warn"

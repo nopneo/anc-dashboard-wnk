@@ -323,8 +323,12 @@
       <small>ครรภ์เสี่ยงในรายใหม่ · ผลอื่นจากครรภ์ที่คลอดในช่วง (ตัวหาร{{ d.scope_label }}) และทารกเกิดใน รพ.</small></div>
     <div class="pb">
       <div class="otiles">
-        <div class="otile"><span class="ol">ครรภ์เสี่ยงสูง</span><b>{{ rate(o.risk) }}</b>
-          <small>{{ o.risk.num }}/{{ o.risk.den }} รายใหม่</small></div>
+        {% if d.risk27 %}
+        <div class="otile"><span class="ol">ครรภ์เสี่ยง (≥ 1 จาก 27 ข้อ)</span><b>{{ fmt(d.risk27.any.pct) }}{{ '%' if d.risk27.any.pct is not none }}</b>
+          <small>{{ d.risk27.any.num }}/{{ d.risk27.any.den }} รายใหม่ · รายละเอียดด้านล่าง</small></div>
+        {% else %}
+        <div class="otile"><span class="ol">ครรภ์เสี่ยงสูง</span><b>—</b><small>คำนวณไม่ได้</small></div>
+        {% endif %}
         <div class="otile"><span class="ol">คลอดก่อนกำหนด &lt; 37 wk</span><b>{{ rate(o.preterm) }}</b>
           <small>{{ o.preterm.num }}/{{ o.preterm.den }} · GA จาก LMP ถึงวันคลอด</small></div>
         <div class="otile {{ 'bad-tile' if o.asphyxia.ok is sameas false }}"><span class="ol">ทารกแรกเกิดขาดออกซิเจน</span>
@@ -348,22 +352,59 @@
           </ol>
         </div>
         <div>
-          <h4 class="k sub-h">ประเภทความเสี่ยง <small>ครรภ์รายใหม่ (แบบคัดกรองความเสี่ยง)</small></h4>
-          {% if d.errors.get('risk') %}<div class="err">⚠ {{ d.errors['risk'] }}</div>
-          {% elif o.risk_types %}{% set mx = o.risk_types[0].n %}
-          <ol class="plist">
-            {% for r in o.risk_types %}
-            <li><span class="nm" title="{{ r.name }}">{{ r.name }}</span><span class="vl">{{ r.n }} ราย</span>
-              <div class="track"><span style="width:{{ (100 * r.n / mx) | round(1) }}%"></span></div></li>
-            {% endfor %}
-          </ol>
-          {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
+          <h4 class="k sub-h">คลอดที่อื่น <small>ครรภ์ที่คลอดในช่วงแต่ไม่ได้คลอดที่ รพ.นี้</small></h4>
           {% if o.place.top %}
-          <h4 class="k sub-h" style="margin-top:10px">คลอดที่อื่น</h4>
           <ul class="legend">{% for x in o.place.top %}<li><span class="nm">{{ x.name }}</span><span class="vl">{{ x.n }}</span></li>{% endfor %}</ul>
-          {% endif %}
+          {% else %}<div class="empty">ไม่มีข้อมูล</div>{% endif %}
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 11b. risk 27 -->
+  {% set r = d.risk27 %}
+  <section class="panel">
+    <div class="ph"><span class="ic">🩺</span><h3>คัดกรองครรภ์เสี่ยง 27 ข้อ</h3>
+      <small>ตามสมุดบันทึกสุขภาพแม่และเด็ก (สมุดสีชมพู) · ฐาน = ฝากครรภ์รายใหม่ในช่วง · ข้อเดียวพอถือเป็นครรภ์เสี่ยง</small></div>
+    <div class="pb">
+      {% if d.errors.get('risk27') %}<div class="err">⚠ {{ d.errors['risk27'] }}</div>
+      {% elif r %}
+      <div class="otiles o4">
+        {% for g in r.groups %}
+        <div class="otile"><span class="ol">{{ g.label }}</span><b>{{ g.num }}</b>
+          <small>ราย · {{ fmt(g.pct) }}{{ '%' if g.pct is not none }} ของ {{ g.den }} รายใหม่</small></div>
+        {% endfor %}
+      </div>
+      <p class="note">ที่มาของข้อมูล:
+        <span class="src" title="แบบคัดกรองความเสี่ยงใน HOSxP">F</span> ฟอร์ม HOSxP ·
+        <span class="src" title="คำนวณจากอายุ / ส่วนสูง / BMI">C</span> คำนวณ ·
+        <span class="src" title="Dx ICD-10 OPD/IPD">D</span> Dx ICD-10 ·
+        <span class="src t" title="ข้อความ HPI/PMH ตัดประโยคปฏิเสธออกก่อน">T</span> ข้อความ HPI/PMH (ประมาณการ อาจพลาดบางราย)</p>
+      <div class="grid g-11" style="margin-top:6px">
+        {% for gkey, glabel in d.risk_groups %}
+        <div>
+          <h4 class="k sub-h">{{ glabel }}</h4>
+          <table class="rtab">
+            {% for it in r["items"] if it.group == gkey %}
+            <tr><td class="no">{{ it.num }}</td><td>{{ it.label }}
+                {% if it.known < r.den %}<small title="มีข้อมูลพอคำนวณ">({{ it.known }}/{{ r.den }} ราย มีข้อมูล)</small>{% endif %}</td>
+              <td class="n">{{ it.n }}</td><td class="p">{{ fmt(it.pct) }}{{ '%' if it.pct is not none }}</td>
+              <td class="s">{% for s in it.sources %}<span class="src {{ 't' if s == 'T' }}">{{ s }}</span>{% endfor %}</td></tr>
+            {% endfor %}
+          </table>
+        </div>
+        {% endfor %}
+        <div>
+          <h4 class="k sub-h">เพิ่มเติมจากฟอร์ม HOSxP <small>ไม่อยู่ใน 27 ข้อ แต่นับเป็นครรภ์เสี่ยง</small></h4>
+          <table class="rtab">
+            {% for e in r.extras %}<tr><td></td><td>{{ e.label }}</td><td class="n">{{ e.n }}</td>
+              <td class="p">{{ fmt(e.pct) }}{{ '%' if e.pct is not none }}</td><td class="s"><span class="src">F</span></td></tr>{% endfor %}
+          </table>
+        </div>
+      </div>
+      <p class="note">ส่วนสูง/BMI ใช้ค่าที่ชั่งใน visit แรกของครรภ์ (แทนน้ำหนักก่อนตั้งครรภ์ เป็นค่าประมาณ) ·
+        อายุคำนวณจากวันเกิดถึงวันลงทะเบียนฝากครรภ์ ไม่ใช้ช่องติ๊กอายุของฟอร์ม</p>
+      {% endif %}
     </div>
   </section>
 

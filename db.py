@@ -71,15 +71,12 @@ def _bind(sql, args):
 def _fetch_ssh(sql, args=None):
     """รันผ่าน ssh แล้วแปลง TSV กลับเป็น list[dict]"""
     sql = _bind(sql, args)
-    remote = (
-        "mariadb --default-character-set=tis620 --batch --raw "
-        f"{shlex.quote(DB_NAME)} -e {shlex.quote(' '.join(sql.split()))}"
-    )
+    remote = f"mariadb --default-character-set=tis620 --batch --raw {shlex.quote(DB_NAME)}"
     if not SSH_HOST:
         raise RuntimeError("โหมด ssh ต้องตั้ง ANC_SSH_HOST (หรือตั้ง DB_PASS เพื่อใช้โหมด direct)")
-    # BatchMode + stdin ปิด: ไม่ให้ ssh ค้างรอถามรหัส/อ่าน stdin เมื่อรันใต้ dev server
+    # ส่ง SQL ทาง stdin เป็น tis-620 (ไม่ใส่ในบรรทัดคำสั่ง) ให้คำไทยใน LIKE ตรงกับข้อมูล · BatchMode กัน ssh ถามรหัส
     proc = subprocess.run(["ssh", "-o", "BatchMode=yes", SSH_HOST, remote], capture_output=True,
-                          stdin=subprocess.DEVNULL, timeout=DB_TIMEOUT)
+                          input=" ".join(sql.split()).encode("tis-620", "replace"), timeout=DB_TIMEOUT)
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.decode("utf-8", "replace"))
 

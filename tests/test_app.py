@@ -33,7 +33,8 @@ def _patch(monkeypatch, pregs=(), visits=(), infants=(), waits=(), refers=()):
     monkeypatch.setattr(queries, "waits", lambda d1, d2, cfg: list(waits))
     monkeypatch.setattr(queries, "refers", lambda d1, d2: list(refers))
     monkeypatch.setattr(queries, "postnatal", lambda ids: [])
-    monkeypatch.setattr(queries, "risk_types", lambda d1, d2: [{"name": "เคยผ่าคลอด", "n": 2}])
+    monkeypatch.setattr(queries, "risk_hits", lambda d1, d2, cfg: {
+        "form": {2: {"7"}}, "dx": {3: {"O30"}}, "text": {4: {"prev_preterm"}}, "body": {1: (150.0, 80.0)}})
 
 
 @pytest.fixture
@@ -267,9 +268,34 @@ def test_labor_warning_on_dashboard(client, fake_data):
 
 def test_outcomes_panel(client, fake_data):
     html = _html(client)
-    for label in ("ผลลัพธ์แม่และทารก", "ครรภ์เสี่ยงสูง", "คลอดก่อนกำหนด", "ทารกแรกเกิดขาดออกซิเจน",
-                  "คลอดที่ รพ.", "มารดาเสียชีวิต", "ทารกตายคลอด", "ภาวะแทรกซ้อน", "เคยผ่าคลอด"):
+    for label in ("ผลลัพธ์แม่และทารก", "ครรภ์เสี่ยง (≥ 1 จาก 27 ข้อ)", "คลอดก่อนกำหนด", "ทารกแรกเกิดขาดออกซิเจน",
+                  "คลอดที่ รพ.", "มารดาเสียชีวิต", "ทารกตายคลอด", "ภาวะแทรกซ้อน"):
         assert label in html, label
     pos = lambda t: html.index(t)
     assert pos("<h3>ตัวชี้วัดคุณภาพ") < pos("<h3>ผลลัพธ์แม่และทารก") < pos("<h3>Refer รายเดือน")
     assert "ต่อ 1,000" in html
+
+
+# ---------- คัดกรองครรภ์เสี่ยง 27 ข้อ ----------
+
+def test_risk27_panel(client, fake_data):
+    html = _html(client)
+    for label in ("คัดกรองครรภ์เสี่ยง 27 ข้อ", "ปัจจัยด้านอายุและร่างกาย", "ประวัติการตั้งครรภ์และการคลอดในอดีต",
+                  "โรคประจำตัวและภาวะอายุรกรรม", "ภาวะแทรกซ้อนของการตั้งครรภ์ปัจจุบัน", "ครรภ์แฝด",
+                  "อายุต่ำกว่า 17 ปี", "เพิ่มเติมจากฟอร์ม HOSxP", "ข้อความ HPI/PMH"):
+        assert label in html, label
+    pos = lambda t: html.index(t)
+    assert pos("<h3>ผลลัพธ์แม่และทารก") < pos("<h3>คัดกรองครรภ์เสี่ยง 27 ข้อ") < pos("<h3>Refer รายเดือน")
+    # 6 รายใหม่: อายุ 14 / 37 + ติ๊กแฝด + Dx O30 (รายที่ 3 อายุ 37 ซ้ำกับอายุ) + ข้อความคลอดก่อนกำหนด → 4 ราย ไม่นับซ้ำ
+    assert "4/6 รายใหม่" in html
+    assert "HN-SECRET" not in html
+
+
+def test_risk27_failure_shows_error_not_zeros(client, fake_data, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(queries, "risk_hits", boom)
+    html = _html(client)
+    assert "คัดกรองครรภ์เสี่ยง 27 ข้อ" in html and "⚠" in html
+    assert "4/6 รายใหม่" not in html
