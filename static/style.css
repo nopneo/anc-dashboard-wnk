@@ -20,6 +20,7 @@
   --g-teal: linear-gradient(135deg, #22c55e, #0e9f6e);
   --g-red: linear-gradient(135deg, #ff4d5e, #dc2626);
   --g-cyan: linear-gradient(135deg, #22d3ee, #0e7490);
+  --g-amber: linear-gradient(135deg, #f59e0b, #b45309);
   --p-red: #ef4444; --p-orange: #f97316; --p-blue: #2563eb; --p-green: #16a34a; --p-purple: #c026d3;
   --q-pink: #ffe1e8; --q-sky: #dfeaff; --q-mint: #ddf6e4; --q-lav: #ece3ff; --q-peach: #ffe9cf; --q-ice: #dff1ff;
   /* กลุ่มอายุ (โดนัท / กราฟซ้อน) */
@@ -84,7 +85,7 @@ a { color: var(--blue); }
 }
 
 /* ------------------------------------------------------------ KPI */
-.kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+.kpis { display: grid; grid-template-columns: repeat(7, 1fr); gap: 16px; }
 .kpi {
   position: relative; color: #fff; border-radius: 14px; padding: 14px 14px 12px; min-height: 138px;
   box-shadow: 0 6px 16px rgba(20, 40, 100, .16); display: grid; grid-template-columns: 46px 1fr; grid-template-rows: auto 1fr auto;
@@ -103,7 +104,7 @@ a { color: var(--blue); }
 .kpi .bar .track i { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #facc15; }
 .k-blue { background: var(--g-blue); } .k-green { background: var(--g-green); } .k-orange { background: var(--g-orange); }
 .k-purple { background: var(--g-purple); } .k-teal { background: var(--g-teal); } .k-red { background: var(--g-red); }
-.k-cyan { background: var(--g-cyan); }
+.k-cyan { background: var(--g-cyan); } .k-amber { background: var(--g-amber); }
 
 /* ------------------------------------------------------------ panels */
 .grid { display: grid; gap: 16px; }
@@ -248,7 +249,7 @@ table.list-t tr[data-miss] td { background: #fff5f5; }
 
 /* ------------------------------------------------------------ responsive */
 @media (max-width: 1280px) {
-  .kpis { grid-template-columns: repeat(3, 1fr); }
+  .kpis { grid-template-columns: repeat(4, 1fr); }
   .otiles { grid-template-columns: repeat(3, 1fr); }
   .g-211 { grid-template-columns: 1fr 1fr; }
   .g-211 > :first-child { grid-column: 1 / 3; }

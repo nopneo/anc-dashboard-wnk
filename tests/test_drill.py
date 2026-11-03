@@ -192,3 +192,10 @@ def test_sti_match(seed):
         check_rate(data, f"sti_{t['key']}_pos", t["pos"])
         m = drill.members(f"sti_{t['key']}_test", data, D1, D2, CFG, None, PCU_MAP)
         assert sum(1 for _, ok in m["rows"] if ok is False) == t["untested"]
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_labor_due_match(seed):
+    data = dataset(seed)
+    lc = metrics.labor_completeness(data["pregs"], D1, D2)
+    assert M(data, "labor_due") == (lc["due"], lc["recorded"])

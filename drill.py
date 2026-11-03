@@ -30,6 +30,7 @@ PREG = {
     "place_here": ("สถานที่คลอด (ครรภ์ที่คลอดในช่วง)", "คลอดที่ รพ."),
     "maternal_death": ("มารดาเสียชีวิต", None),
     "open": ("หญิงตั้งครรภ์ที่กำลังติดตาม ณ วันสิ้นสุดช่วง", "≤12 wk"),
+    "labor_due": ("ครรภ์ครบกำหนดแล้ว (LMP ≥ 42 สัปดาห์) — บันทึกวันคลอดใน person_anc", "ลงวันคลอดแล้ว"),
     **{k: (f"{label} (ครรภ์ที่คลอดในช่วง)", "ได้") for k, label in metrics.QUALITY_PARTS},
     **{k: (f"ภาวะแทรกซ้อน: {label} (ครรภ์ที่คลอดในช่วง)", "พบ") for k, label in metrics.COMPLICATIONS},
     **{f"sti_{k}_test": (f"ตรวจ{label} (ฝากครรภ์รายใหม่ในช่วง)", "ตรวจแล้ว") for k, label in sti.LABELS.items()},
@@ -120,6 +121,7 @@ def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
         "place_here": lambda: (delivered, lambda p: p.get("labour_hospcode") == cfg.hospcode),
         "maternal_death": lambda: ([p for p in pregs if metrics.died_in_window(p, d1, d2, cfg)], None),
         "open": lambda: ([p for p in pregs if metrics.pregnant_on(p, d2)], lambda p: metrics.is_early12(p, vs(p))),
+        "labor_due": lambda: (metrics.labor_due(pregs, d1, d2), lambda p: p.get("labor_date") is not None),
         **{k: (lambda k=k: (delivered, flag(k))) for k, _ in metrics.QUALITY_PARTS},
         **{k: (lambda k=k: (delivered, flag(k))) for k, _ in metrics.COMPLICATIONS},
         **{f"sti_{k}_test": (lambda k=k: (new, lambda p: st(p, k) is not None)) for k in sti.LABELS},
@@ -128,7 +130,7 @@ def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
     }
     base, ok = spec[key]()
     label, ok_label = PREG[key]
-    return {"key": key, "label": label, "kind": "preg", "ok_label": ok_label,
+    return {"key": key, "label": label, "kind": "preg", "ok_label": ok_label, "d2": d2,
             "rows": [(p, ok(p) if ok else None) for p in base]}
 
 

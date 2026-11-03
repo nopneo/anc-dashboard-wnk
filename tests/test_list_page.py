@@ -135,3 +135,27 @@ def test_teen_repeat_list_shows_gravida(client, monkeypatch):
     login(client)
     html = page(client, f"/list?k=teen_repeat&{Q}")
     assert html.count('class="row"') == 1 and "ครรภ์ที่" in html and "อายุ ณ วันสิ้นสุดครรภ์" in html
+
+
+def test_labor_card_after_refer_links_to_missing_list(client, monkeypatch):
+    pregs = [dict(_preg(1, 25, "30250101", labor=None), hn="HN1"), dict(_preg(2, 25, "30250101"), hn="HN2")]
+    monkeypatch.setattr(queries, "pregnancies", lambda d1, d2, cfg: pregs)
+    appmod._raw._data.clear()
+    html = page(client, f"/?{Q}")
+    i = html.index('class="kpis"')
+    kpis = html[i:html.index("</section>", i)]
+    assert kpis.index("ส่งต่อ (Refer)") < kpis.index("บันทึกวันคลอด")
+    assert "k=labor_due" in kpis and "only=out" in kpis
+    banner = html[html.index("บันทึกวันคลอดในทะเบียน") - 300:html.index("บันทึกวันคลอดในทะเบียน") + 600]
+    assert "k=labor_due" in banner
+
+
+def test_labor_due_list_shows_ga_column(client, monkeypatch):
+    from datetime import date
+    pregs = [dict(_preg(1, 25, "30250101", labor=None), hn="HN1", lmp=date(2025, 3, 1)),
+             dict(_preg(2, 25, "30250101"), hn="HN2", lmp=date(2025, 3, 1))]
+    monkeypatch.setattr(queries, "pregnancies", lambda d1, d2, cfg: pregs)
+    appmod._raw._data.clear()
+    login(client)
+    html = page(client, f"/list?k=labor_due&only=out&{Q}")
+    assert html.count('class="row"') == 1 and "HN1" in html and "GA ณ วันสิ้นสุดช่วง" in html

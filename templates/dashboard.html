@@ -105,7 +105,8 @@
 
   {% if d.labor.pct is not none and d.labor.pct < d.labor.warn_pct %}
   <div class="audit-bar"><div style="background:#fdecea;border-color:#f5a3a3;color:#7f1d1d">
-    ⚠ <b>บันทึกวันคลอดในทะเบียนฝากครรภ์เพียง {{ d.labor.pct }}%</b> ({{ d.labor.recorded }}/{{ d.labor.due }} ครรภ์ที่ครบกำหนดแล้ว)
+    ⚠ <b>บันทึกวันคลอดในทะเบียนฝากครรภ์เพียง {{ d.labor.pct }}%</b> ({{ L('labor_due', d.labor.recorded ~ '/' ~ d.labor.due) }} ครรภ์ที่ครบกำหนดแล้ว
+    · ยังไม่ลง {{ L('labor_due', d.labor.due - d.labor.recorded, only='out') }} ราย)
     — ตัวชี้วัดที่หารด้วย “ครรภ์ที่คลอดในช่วง” จะขาดรายที่ไม่ได้ลงวันคลอด ควรลงวันคลอดใน person_anc ให้ครบ
   </div></div>
   {% endif %}
@@ -140,6 +141,13 @@
       <div class="u">{{ L('visit5', k.visit5.num ~ '/' ~ k.visit5.den) }} ราย ที่คลอด</div>{{ kbar(k.visit5) }}</div>
     <div class="kpi k-red"><div class="ic">🚑</div><div class="tt">ส่งต่อ (Refer)</div>
       <div class="v">{{ '—' if rerr else L('refer', fmt(d.refer.total)) }}</div><div class="u">ครั้ง</div></div>
+    {% set lb = d.labor %}
+    <div class="kpi {{ 'k-amber' if lb.pct is not none and lb.pct < lb.warn_pct else 'k-cyan' }}"><div class="ic">📝</div>
+      <div class="tt">บันทึกวันคลอด</div>
+      <div class="v">{{ fmt(lb.pct) }}{{ '%' if lb.pct is not none }}</div>
+      <div class="u">{{ L('labor_due', lb.recorded ~ '/' ~ lb.due) }} ครรภ์ครบกำหนด · ยังไม่ลง
+        {{ L('labor_due', lb.due - lb.recorded, only='out') }} ราย</div>
+      {{ kbar({'value': lb.pct, 'target': lb.warn_pct}) }}</div>
   </section>
   <h2 class="src-note">ANC KPI Summary · ภาพรวมงานฝากครรภ์ — ร้อยละคิดจากครรภ์ที่คลอดในช่วง · ขีดเหลือง = เป้า</h2>
 

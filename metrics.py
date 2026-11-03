@@ -113,10 +113,15 @@ def in_area(p, cfg):
     return resident or p.get("labour_hospcode") == cfg.hospcode
 
 
+def labor_due(pregs, d1, d2):
+    """ครรภ์ที่ LMP ครบ 42 สัปดาห์ ณ d2 (LMP ไม่เกิน 1 ปีก่อน d1) — ควรมีวันคลอดในทะเบียนแล้ว"""
+    return [p for p in pregs if p.get("lmp") and (d2 - p["lmp"]).days >= 42 * 7
+            and p["lmp"] >= d1 - timedelta(days=365)]
+
+
 def labor_completeness(pregs, d1, d2):
-    """ครรภ์ที่ LMP ครบ 42 สัปดาห์ ณ d2 (LMP ไม่เกิน 1 ปีก่อน d1) มีวันคลอดในทะเบียนกี่ % — ต่ำ = ตัวหาร KPI ขาด"""
-    due = [p for p in pregs if p.get("lmp") and (d2 - p["lmp"]).days >= 42 * 7
-           and p["lmp"] >= d1 - timedelta(days=365)]
+    """ครรภ์ครบกำหนด (labor_due) มีวันคลอดในทะเบียนกี่ % — ต่ำ = ตัวหาร KPI ขาด"""
+    due = labor_due(pregs, d1, d2)
     rec = sum(1 for p in due if p.get("labor_date"))
     return {"due": len(due), "recorded": rec, "pct": pct(rec, len(due))}
 

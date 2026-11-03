@@ -28,8 +28,10 @@ def _pcu_name(village, pcu_map, cfg):
     return metrics.pcu_of(village, pcu_map or {}, cfg)[1]
 
 
-def _extra(key, data):
+def _extra(key, data, d2=None):
     """คอลัมน์เพิ่มเฉพาะบางรายชื่อ → [(หัวคอลัมน์, ฟังก์ชันรับครรภ์)]"""
+    if key == "labor_due" and d2:
+        return [("GA ณ วันสิ้นสุดช่วง (สัปดาห์)", lambda p: (d2 - p["lmp"]).days // 7)]
     if key == "teen_repeat":
         dash = lambda v: "-" if v is None else v
         return [("อายุ ณ วันสิ้นสุดครรภ์", lambda p: dash(p.get("age_labor"))),
@@ -51,7 +53,7 @@ def table(m, data, cfg, pcu_map, names):
         vmap = metrics._by_anc(data["visits"])
         buckets = {"visit5": metrics.GA_BUCKETS, "visit8": metrics.GA_BUCKETS_8}.get(m["key"])
         flags = risk27.flags([p for p, _ in m["rows"]], data["risk_hits"], cfg)
-        extra = _extra(m["key"], data)
+        extra = _extra(m["key"], data, m.get("d2"))
         head = ["ชื่อ-สกุล", "HN", "อายุ", "ที่อยู่", "รพ.สต.", "วันลงทะเบียน", "LMP", "GA ครั้งแรก",
                 "ฝากครรภ์ (ที่ รพ./ที่อื่น)"] + (["ช่วงที่ยังขาด (สัปดาห์)"] if buckets else []) + \
                ["วันคลอด", "สถานที่คลอด"] + [h for h, _ in extra] + ([ok_label] if ok_label else []) +                ["ข้อเสี่ยงที่พบ (27 ข้อ)"]
