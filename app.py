@@ -68,7 +68,8 @@ app.wsgi_app = PrefixMiddleware(app.wsgi_app)
 #: กุญแจ session ของหน้ารายชื่อ — ไม่ตั้ง = ปิดหน้ารายชื่อ/login ทั้งหมด (แดชบอร์ดตัวเลขยังใช้ได้)
 #: สุ่มเองไม่ได้: gunicorn หลาย worker จะได้กุญแจคนละตัว และ login หลุดทุกครั้งที่ restart
 app.secret_key = os.getenv("ANC_SECRET_KEY") or None
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+#: ชื่อ cookie ของตัวเอง — แอปอื่นบนโดเมนเดียวกันใช้ "session" (Path=/) ถ้าซ้ำ login ที่หนึ่งจะหลุดอีกที่
+app.config.update(SESSION_COOKIE_NAME="anc_session", SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   SESSION_COOKIE_SECURE=os.getenv("ANC_COOKIE_SECURE", "0") == "1",
                   PERMANENT_SESSION_LIFETIME=8 * 3600)
 

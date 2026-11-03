@@ -75,3 +75,9 @@ def test_lan_only_option_blocks_outside(client, monkeypatch):
     r = client.get("/login", environ_base={"REMOTE_ADDR": "8.8.8.8"})
     assert r.status_code == 403
     assert client.get("/login", environ_base={"REMOTE_ADDR": "192.168.1.5"}).status_code == 200
+
+
+def test_session_cookie_has_own_name(client):
+    # แอปอื่นบน wnkhos.go.th ใช้ cookie ชื่อ session (Path=/) — ชื่อซ้ำ = login ที่หนึ่งแล้วหลุดอีกที่
+    r = client.get("/login")
+    assert "anc_session=" in r.headers.get("Set-Cookie", "")
