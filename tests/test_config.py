@@ -9,6 +9,9 @@ def test_defaults():
     assert c.hct_cutoff == 33 and c.hct_late_ga == 28 and c.lbw_grams == 2500
     assert c.postpartum_days == 42
     assert c.refer_dx_prefixes == ("O", "Z32", "Z33", "Z34", "Z35", "Z36")
+    assert c.refer_dx_exclude == ("Z32", "Z34")
+    assert load_config({"ANC_REFER_DX_EXCLUDE": "z34, Z32.9"}).refer_dx_exclude == ("Z34", "Z329")
+    assert load_config({"ANC_REFER_DX_EXCLUDE": ""}).refer_dx_exclude == ()      # ว่าง = จัดอันดับทุกรหัส
     assert c.targets == {"early12": 75, "visit5": 75, "visit8": None, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7,
                          "postnatal": 75, "quality": 70, "iodine": None, "asphyxia": 25, "teen_repeat": None}
     assert c.data_audited is False and not hasattr(c, "wait_from_col")

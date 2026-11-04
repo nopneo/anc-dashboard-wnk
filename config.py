@@ -34,6 +34,8 @@ VISIT8_TARGETS = {2566: 50, 2567: 55, 2568: 60, 2569: 65, 2570: 70}
 TEEN_REPEAT_TARGETS = {2567: 13.0, 2568: 12.5, 2569: 12.0, 2570: 11.5}
 #: การตรวจโรคติดเชื้อทางเพศสัมพันธ์ (sti.py) — รหัส lab ต่อการตรวจตั้งด้วย ANC_STI_<KEY>_LABS / ANC_STI_<KEY>_ANC_LABS
 STI_KEYS = ("syphilis", "hbv", "hiv", "amph")
+#: OGTT (ogtt.py) — รหัส lab ต่อชนิดตั้งด้วย ANC_OGTT_<KEY>_LABS (เรียงตามจุดเจาะ) · เกณฑ์ ANC_OGTT_<KEY>_CUT
+OGTT_KEYS = ("g100", "g75")
 
 #: ยาเม็ดที่มีไอโอดีน (รหัสยา 24 หลัก DIDSTD ตามเอกสาร KPI: Triferdine 150, Obimin-az, Iodine GPO,
 #: Nataral, Nataral EF, Prenamed, Iolic)
@@ -89,9 +91,16 @@ class Config:
     risk_text: dict = field(default_factory=lambda: dict(risk27.DEFAULT_TEXT))
     postpartum_days: int = 42
     refer_dx_prefixes: tuple = ("O", "Z32", "Z33", "Z34", "Z35", "Z36")
+    #: ไม่จัดอันดับใน Top 10 Refer Dx — Z32 = ยังไม่ยืนยันการตั้งครรภ์, Z34 = มาฝากครรภ์ปกติ
+    #: ไม่ใช่ Dx ตอน refer (ยังนับเป็น refer งานแม่และเด็ก)
+    refer_dx_exclude: tuple = ("Z32", "Z34")
     #: {การตรวจ: รหัส lab_items} / {การตรวจ: anc_lab_id} · ว่าง = เลือกจากชื่อรายการ (sti.pick_*)
     sti_labs: dict = field(default_factory=dict)
     sti_anc_labs: dict = field(default_factory=dict)
+    #: {ชนิด OGTT: (รหัส lab ต่อจุดเจาะ)} / {ชนิด: (เกณฑ์ผิดปกติต่อจุด mg/dL)} · ว่าง = เลือกจากชื่อรายการ / เกณฑ์มาตรฐาน
+    ogtt_labs: dict = field(default_factory=dict)
+    ogtt_cut: dict = field(default_factory=dict)
+    ogtt_min_abn: int = 2
     targets: dict = field(default_factory=lambda: dict(TARGET_DEFAULTS))
     village_csv: str = os.path.join(HERE, "village_pcu.csv")
     chwpart: str = "30"
@@ -111,6 +120,10 @@ def _list(v):
 
 def _dx(v):
     return tuple(x.replace(".", "").upper() for x in _list(v))
+
+
+def _is_num(v):
+    return _num(v, None) is not None
 
 
 def _num(v, default):
@@ -157,9 +170,14 @@ def load_config(env=os.environ):
         risk_text={k: (g(f"ANC_RISK_TEXT_{k.upper()}") or "").strip() or v for k, v in risk27.DEFAULT_TEXT.items()},
         postpartum_days=int(_num(g("ANC_POSTPARTUM_DAYS"), d.postpartum_days)),
         refer_dx_prefixes=tuple(x.upper() for x in _list(g("ANC_REFER_DX_PREFIXES"))) or d.refer_dx_prefixes,
+        refer_dx_exclude=(_dx(g("ANC_REFER_DX_EXCLUDE")) if g("ANC_REFER_DX_EXCLUDE") is not None
+                          else d.refer_dx_exclude),
         sti_labs={k: _list(g(f"ANC_STI_{k.upper()}_LABS")) for k in STI_KEYS},
         sti_anc_labs={k: tuple(int(x) for x in _list(g(f"ANC_STI_{k.upper()}_ANC_LABS")) if x.isdigit())
                       for k in STI_KEYS},
+        ogtt_labs={k: tuple(_list(g(f"ANC_OGTT_{k.upper()}_LABS"))) for k in OGTT_KEYS},
+        ogtt_cut={k: tuple(float(x) for x in _list(g(f"ANC_OGTT_{k.upper()}_CUT")) if _is_num(x)) for k in OGTT_KEYS},
+        ogtt_min_abn=max(1, int(_num(g("ANC_OGTT_MIN_ABN"), d.ogtt_min_abn))),
         targets={k: _num(g(f"ANC_TARGET_{k.upper()}" if k != "visit5" else "ANC_TARGET_5VISIT"), v)
                  for k, v in TARGET_DEFAULTS.items()},
         village_csv=path if os.path.isabs(path) else os.path.join(HERE, path),

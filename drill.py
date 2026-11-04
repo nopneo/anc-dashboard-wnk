@@ -9,12 +9,16 @@ tests/test_drill.py ตรวจว่าจำนวนแถวเท่าก
 
 import metrics
 import risk27
+import ogtt
 import sti
 import anemia
 
 _m = metrics
 
 #: key → (ชื่อ, คำอธิบายคอลัมน์เข้าเกณฑ์) ของรายชื่อที่เป็นครรภ์
+#: ชนิด OGTT ในรายชื่อ (all = รวมทุกชนิด นับคนละครั้ง)
+OGTT_LABELS = {**ogtt.LABELS, "all": "OGTT (ทุกชนิดรวมกัน)"}
+
 PREG = {
     "new": ("ฝากครรภ์รายใหม่ในช่วง", None),
     "early12": ("ฝากครรภ์ครั้งแรก ≤ 12 สัปดาห์ (ครรภ์ที่คลอดในช่วง)", "≤12 wk"),
@@ -39,6 +43,9 @@ PREG = {
     **{f"hct_{k}": (f"ติดตามภาวะซีด: {label} (ครรภ์ที่คลอดในช่วง)", None) for k, label in anemia.GROUPS},
     **{f"sti_{k}_test": (f"ตรวจ{label} (ฝากครรภ์รายใหม่ในช่วง)", "ตรวจแล้ว") for k, label in sti.LABELS.items()},
     **{f"sti_{k}_pos": (f"ผลบวก {label} (ฝากครรภ์รายใหม่ที่ได้ตรวจ)", "ผลบวก") for k, label in sti.LABELS.items()},
+    **{f"ogtt_{k}_test": (f"ตรวจ {label} (ใบสั่ง lab ในช่วง ระหว่างตั้งครรภ์)", "ผิดปกติ") for k, label in OGTT_LABELS.items()},
+    **{f"ogtt_{k}_abn": (f"ผล {label} ผิดปกติตั้งแต่เกณฑ์ (ใบสั่ง lab ในช่วง ระหว่างตั้งครรภ์)", None)
+       for k, label in OGTT_LABELS.items()},
 }
 INFANT = {
     "lbw": ("ทารกน้ำหนักแรกเกิดน้อย (เกิดมีชีพที่ชั่งน้ำหนัก)", "< 2,500 g"),
@@ -83,7 +90,7 @@ def _r27(key):
 
 
 def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
-    """data = {"pregs", "visits", "infants", "refers" (ผ่าน select_refers แล้ว), "pnc", "risk_hits", "sti", "hct"}"""
+    """data = {"pregs", "visits", "infants", "refers" (ผ่าน select_refers แล้ว), "pnc", "risk_hits", "sti", "hct", "ogtt"}"""
     if key in INFANT:
         return _infants(key, data, d1, d2, cfg, pcu_map, pcu)
     if key in REFER:
@@ -108,6 +115,7 @@ def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
 
     flag = lambda f: (lambda p: bool(p.get(f)))
     st = lambda p, k: sti.status(data.get("sti") or {}, p["anc_id"], k)
+    og = lambda p, k: ogtt.status(data.get("ogtt") or {}, p["anc_id"], k, cfg)
     hg = lambda p: anemia.classify((data.get("hct") or {}).get(p["anc_id"]) or [], cfg)
     spec = {
         "new": lambda: (new, None),
@@ -135,6 +143,9 @@ def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
         **{f"sti_{k}_test": (lambda k=k: (new, lambda p: st(p, k) is not None)) for k in sti.LABELS},
         **{f"sti_{k}_pos": (lambda k=k: ([p for p in new if st(p, k) is not None], lambda p: st(p, k) == "pos"))
            for k in sti.LABELS},
+        **{f"ogtt_{k}_test": (lambda k=k: ([p for p in pregs if og(p, k) is not None], lambda p: og(p, k) == "abn"))
+           for k in OGTT_LABELS},
+        **{f"ogtt_{k}_abn": (lambda k=k: ([p for p in pregs if og(p, k) == "abn"], None)) for k in OGTT_LABELS},
     }
     base, ok = spec[key]()
     label, ok_label = PREG[key]

@@ -81,6 +81,19 @@ def test_top_dx_limit_10_by_3char():
     assert s["top_dx"][0] == {"code3": "O21", "name": "dx11", "n": 12, "pct": round(12 * 100 / len(rows), 1)}
 
 
+def test_top_dx_skips_excluded_codes():
+    """Z34 = มาฝากครรภ์ (ไม่ใช่ Dx ตอน refer) → ไม่จัดอันดับ แต่ยังนับใน total · ร้อยละคิดจาก refer ที่จัดอันดับ"""
+    rows = [dict(ref(i, date(2026, 10, 1), pdx="Z349", dx_name="Supervision of normal pregnancy"), group=None, reason="dx")
+            for i in range(3)]
+    rows += [dict(ref(10, date(2026, 10, 2), pdx="O480", dx_name="Prolonged pregnancy"), group=None, reason="dx"),
+             dict(ref(11, date(2026, 10, 3), pdx="Z35.4", dx_name="Grand multiparity"), group=None, reason="dx")]
+    s = refer_summary(rows, date(2026, 10, 1), date(2026, 10, 31), exclude=("Z34",))
+    assert [d["code3"] for d in s["top_dx"]] == ["O48", "Z35"]
+    assert s["top_dx"][0]["pct"] == 50.0
+    assert s["total"] == 5 and s["dx_excluded"] == 3
+    assert next(r for r in s["table"] if r["chapter"] == "Z3x")["n"] == 4   # ตารางสรุปยังแสดงครบ
+
+
 def test_dest_sorted_and_unnamed():
     rows = [dict(ref(1, date(2026, 10, 1), dest="A", dest_name=None), group=None, reason="dx"),
             dict(ref(2, date(2026, 10, 1), dest="B", dest_name="รพ.บี"), group=None, reason="dx"),

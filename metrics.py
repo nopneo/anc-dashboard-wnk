@@ -396,15 +396,19 @@ def _months(d1, d2):
     return out
 
 
-def refer_summary(refers, d1, d2):
+def refer_summary(refers, d1, d2, exclude=()):
+    """exclude = รหัสที่ไม่จัดอันดับใน Top 10 Dx (เช่น Z34 มาฝากครรภ์ ไม่ใช่ Dx ตอน refer) — ยังนับใน total และตาราง"""
     monthly = {m: {"month": m, "teen": 0, "repro": 0, "elder": 0, "unknown": 0} for m in _months(d1, d2)}
     dx, dest, table = {}, {}, defaultdict(list)
+    excluded = 0
     for r in refers:
         month = r["date"].strftime("%Y-%m")
         if month in monthly:
             monthly[month][r.get("group") or "unknown"] += 1
         code = (r.get("pdx") or "").replace(".", "").strip().upper()[:3]
-        if code:
+        if code and _dx_match(code, exclude):
+            excluded += 1
+        elif code:
             d = dx.setdefault(code, {"code3": code, "name": r.get("dx_name"), "n": 0})
             d["n"] += 1
             d["name"] = d["name"] or r.get("dx_name")
@@ -415,7 +419,7 @@ def refer_summary(refers, d1, d2):
     total = len(refers)
     top = sorted(dx.values(), key=lambda d: (-d["n"], d["code3"]))[:10]
     for d in top:
-        d["pct"] = pct(d["n"], total)
+        d["pct"] = pct(d["n"], total - excluded)
     rows = []
     for (month, chapter, dname), rs in sorted(table.items()):
         m = [r["minutes"] for r in rs if r.get("minutes") is not None]
@@ -430,7 +434,8 @@ def refer_summary(refers, d1, d2):
                      "dx": sorted(codes.values(), key=lambda d: (-d["n"], d["code3"])),
                      "dest_name": dname, "n": len(rs), "avg_min": round(sum(m) / len(m), 1) if m else None})
     return {"monthly": list(monthly.values()), "top_dx": top,
-            "dest": sorted(dest.values(), key=lambda d: (-d["n"], d["code"])), "table": rows, "total": total}
+            "dest": sorted(dest.values(), key=lambda d: (-d["n"], d["code"])), "table": rows, "total": total,
+            "dx_excluded": excluded, "dx_exclude": tuple(exclude)}
 
 
 # ---------- รพ.สต. (แบบเดียวกับ mental_health_dashboard) ----------

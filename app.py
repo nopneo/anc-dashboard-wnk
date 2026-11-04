@@ -36,6 +36,7 @@ import render
 import metrics
 import risk27
 import queries
+import ogtt
 import sti
 import anemia
 import store
@@ -241,6 +242,10 @@ def _sti(d1, d2, cfg):
     return _memo("sti", d1, d2, cfg, lambda: queries.sti_results(d1, d2, cfg))
 
 
+def _ogtt(d1, d2, cfg):
+    return _memo("ogtt", d1, d2, cfg, lambda: queries.ogtt_results(d1, d2, cfg))
+
+
 def _refers(d1, d2, cfg):
     return _memo("refers", d1, d2, cfg, lambda: queries.refers(d1, d2))
 
@@ -250,7 +255,7 @@ def load_data(d1, d2, cfg):
     pregs, visits, infants, pnc = _main_data(d1, d2, cfg)
     return {"pregs": pregs, "visits": visits, "infants": infants, "pnc": pnc,
             "refers": metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), "risk_hits": _risk_hits(d1, d2, cfg),
-            "sti": _sti(d1, d2, cfg), "hct": _hct(d1, d2, cfg)}
+            "sti": _sti(d1, d2, cfg), "hct": _hct(d1, d2, cfg), "ogtt": _ogtt(d1, d2, cfg)}
 
 
 def build_context(d1, d2, scope="area"):
@@ -274,8 +279,9 @@ def build_context(d1, d2, scope="area"):
     sti_res = _safe(errors, "sti", lambda: sti.summarize(new, _sti(d1, d2, cfg), cfg), None)
     hct_res = _safe(errors, "hct", lambda: anemia.summarize(metrics._delivered(pregs, d1, d2, area),
                                                              _hct(d1, d2, cfg), cfg), None)
+    ogtt_res = _safe(errors, "ogtt", lambda: ogtt.summarize(pregs, _ogtt(d1, d2, cfg), cfg), None)
     refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), [])
-    refer = metrics.refer_summary(refer_rows, d1, d2)
+    refer = metrics.refer_summary(refer_rows, d1, d2, cfg.refer_dx_exclude)
 
     pcu_map = _safe(errors, "pcu", lambda: load_village_pcu(cfg.village_csv, cfg.chwpart, cfg.amppart), None)
     pcu = metrics.by_pcu(pregs, visits, infants, refer_rows, d1, d2, cfg, pcu_map, area=area) if pcu_map is not None else []
@@ -290,7 +296,7 @@ def build_context(d1, d2, scope="area"):
         "trend": metrics.monthly_trend(pregs, visits, d1, d2),
         "pcu": pcu, "pcu_missing": pcu_map is None and "pcu" not in errors,
         "unmapped": unmapped, "refer": refer,
-        "outcome": outcome, "risk27": risk27_res, "risk_groups": risk27.GROUPS, "sti": sti_res, "hct": hct_res,
+        "outcome": outcome, "risk27": risk27_res, "risk_groups": risk27.GROUPS, "sti": sti_res, "hct": hct_res, "ogtt": ogtt_res,
         "hct_cutoff_t2": cfg.hct_cutoff_t2, "hct_improve": cfg.hct_improve,
         "alerts": metrics.alerts(ind, pcu, age, unmapped, outcome) if "main" not in errors else [],
         "errors": errors, "audited": cfg.data_audited, "cfg_targets": cfg.targets,

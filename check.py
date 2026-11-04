@@ -8,6 +8,7 @@
 from datetime import timedelta
 
 import metrics
+import ogtt
 import queries
 import risk27
 import sti
@@ -114,8 +115,10 @@ def _refer_dx(d1, d2, cfg, pregs):
     names = {"registry": "อยู่ในทะเบียนฝากครรภ์เท่านั้น", "dx": "Dx หลักตรงเท่านั้น", "both": "ทั้งสองเงื่อนไข"}
     return _item("refer_dx", "refer ที่นับเป็นงานแม่และเด็ก", ", ".join(cfg.refer_dx_prefixes),
                  [{"code": k, "name": v, "n": by.get(k, 0)} for k, v in names.items()], "ok",
-                 "ANC_REFER_DX_PREFIXES · ANC_POSTPARTUM_DAYS",
-                 f"ทะเบียนฝากครรภ์ถึงหลังคลอด {cfg.postpartum_days} วัน หรือ Dx หลักขึ้นต้นด้วยรหัสที่ตั้ง")
+                 "ANC_REFER_DX_PREFIXES · ANC_POSTPARTUM_DAYS · ANC_REFER_DX_EXCLUDE",
+                 f"ทะเบียนฝากครรภ์ถึงหลังคลอด {cfg.postpartum_days} วัน หรือ Dx หลักขึ้นต้นด้วยรหัสที่ตั้ง · "
+                 f"Top 10 Dx ไม่จัดอันดับ {', '.join(cfg.refer_dx_exclude) or '—'} "
+                 f"({sum(metrics._dx_match(r.get('pdx'), cfg.refer_dx_exclude) for r in sel)} ครั้ง)")
 
 
 def _hct_series(d1, d2, cfg):
@@ -179,6 +182,47 @@ select lo.lab_items_code code, li.lab_items_name name, lo.lab_order_result resul
                                 "Positive/Negative" if warn else "")
     return _item("sti_codes", "โรคติดเชื้อทางเพศสัมพันธ์ + ปัสสาวะ Amphetamine (LABFU)", uses, found,
                  _status(False, warn), "ANC_STI_SYPHILIS_LABS · ANC_STI_HBV_LABS · ANC_STI_HIV_LABS · ANC_STI_AMPH_LABS (+ _ANC_LABS)", hint)
+
+
+#: ผล OGTT ที่อ่านเป็นตัวเลขไม่ได้เกินนี้ (%) → warn
+OGTT_UNPARSED_WARN_PCT = 10.0
+
+
+def _ogtt(d1, d2, cfg):
+    codes = queries.ogtt_codes(cfg)
+    used = {c for k in ogtt.LABELS for c in codes[k] if c}
+    rows = fetch("""
+select lo.lab_items_code code, li.lab_items_name name, lo.lab_order_result result, count(*) n
+  from lab_head lh
+  join lab_order lo on lo.lab_order_number = lh.lab_order_number
+  join lab_items li on li.lab_items_code = lo.lab_items_code
+ where lh.order_date between %(d1)s and %(d2)s
+   and (lo.lab_items_code in %(codes)s or lower(li.lab_items_name) like 'ogtt%%')
+ group by lo.lab_items_code, li.lab_items_name, lo.lab_order_result""",
+                 {"d1": d1, "d2": d2, "codes": tuple(used) or ("-",)})
+    n_all, n_bad, names = {}, {}, {}
+    for r in rows:
+        c, n = str(r.get("code")), int(num(r.get("n")))
+        names[c] = r.get("name") or ""
+        n_all[c] = n_all.get(c, 0) + n
+        if c in used and ogtt.parse(r.get("result")) is None and str(r.get("result") or "").strip():
+            n_bad[c] = n_bad.get(c, 0) + n
+    found = sorted(({"code": c, "name": names[c] + ("" if c in used else " (แอปไม่ได้ใช้ — OGTT 50 g / หัวใบสั่ง)"), "n": n}
+                    for c, n in n_all.items()), key=lambda f: -f["n"])
+    notes, warn = [], False
+    for k, label in ogtt.LABELS.items():
+        missing = [p for p, c in zip(ogtt.POINTS[k], codes[k]) if not c]
+        n = sum(n_all.get(c, 0) for c in codes[k] if c)
+        bad = sum(n_bad.get(c, 0) for c in codes[k] if c)
+        u = metrics.pct(bad, n)
+        bad_k = bool(missing) or (u or 0) >= OGTT_UNPARSED_WARN_PCT
+        warn = warn or bad_k
+        notes.append(f"{label}: " + (f"ไม่พบรหัสจุด {', '.join(missing)}" if missing else f"{n} ผลในช่วง · อ่านไม่ได้ {u or 0}%")
+                     + (" ⚠" if bad_k else ""))
+    uses = " · ".join(f"{label} " + ", ".join(c or "?" for c in codes[k]) for k, label in ogtt.LABELS.items())
+    hint = " · ".join(notes) + (" — ตั้งรหัส lab ของ รพ. เรียงตามจุดเจาะ (ANC_OGTT_G100_LABS = ก่อนกิน,1 ชม.,2 ชม.,3 ชม.)" if warn else "")
+    return _item("ogtt_codes", "OGTT ในหญิงตั้งครรภ์ (ก่อนกิน / หลังกิน 1, 2, 3 ชั่วโมง)", uses, found, _status(False, warn),
+                 "ANC_OGTT_G100_LABS · ANC_OGTT_G75_LABS · ANC_OGTT_*_CUT · ANC_OGTT_MIN_ABN", hint)
 
 
 def _pcu_item(pregs, pcu_map, cfg):
@@ -339,6 +383,7 @@ def audit(d1, d2, cfg, pcu_map):
         _guard("outcome_codes", "ผลลัพธ์แม่และทารก", "ANC_ASPHYXIA_APGAR", lambda: _outcome_codes(d1, d2, cfg)),
         _guard("hct_series", "ติดตามภาวะซีด", "ANC_HCT_SERIES_LABS", lambda: _hct_series(d1, d2, cfg)),
         _guard("sti_codes", "โรคติดเชื้อทางเพศสัมพันธ์", "ANC_STI_*_LABS", lambda: _sti(d1, d2, cfg)),
+        _guard("ogtt_codes", "OGTT ในหญิงตั้งครรภ์", "ANC_OGTT_*", lambda: _ogtt(d1, d2, cfg)),
         _guard("risk27", "คัดกรองครรภ์เสี่ยง 27 ข้อ", "ANC_RISK_DX_* · ANC_RISK_TEXT_*", lambda: _risk27(new, d1, d2, cfg)),
         _pcu_item(new, pcu_map, cfg),
     ]

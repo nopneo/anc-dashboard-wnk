@@ -309,7 +309,7 @@
       </div>
     </section>
     <section class="panel">
-      <div class="ph"><span class="ic">🩺</span><h3>Top 10 Refer Diagnoses</h3><small>Dx หลัก 3 หลัก · {{ '—' if rerr else d.refer.total }} ครั้ง</small></div>
+      <div class="ph"><span class="ic">🩺</span><h3>Top 10 Refer Diagnoses</h3><small>Dx หลัก 3 หลัก · {{ '—' if rerr else d.refer.total }} ครั้ง{% if not rerr and d.refer.dx_excluded %} · ไม่จัดอันดับ {{ d.refer.dx_exclude | join(', ') }} {{ d.refer.dx_excluded }} ครั้ง{% endif %}</small></div>
       <div class="pb">
       {{ sec_error('refer') }}
       {% if rerr %}
@@ -471,6 +471,34 @@
       <p class="note">HOSxP: lab_order (VDRL / TPHA · HBs Ag · Anti-HIV · Methamphetamine ปัสสาวะ) · person_anc_lab ·
         ผลพิมพ์มือจัดกลุ่มเป็นบวก (Reactive / Positive) · ลบ (Non-reactive / Negative) · ไม่ชัด (ว่าง / Inconclusive / อื่น ๆ — ไม่นับเป็นลบ) ·
         ตรวจหลายครั้งพบบวกครั้งใดนับเป็นบวก · รหัส lab ที่ใช้ดูได้ที่หน้าตรวจข้อมูล</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- ============================================================ 11d. OGTT -->
+  <section class="panel">
+    <div class="ph"><span class="ic">🩸</span><h3>ตรวจน้ำตาล OGTT ในหญิงตั้งครรภ์</h3>
+      <small>ใบสั่ง lab ในช่วง (ระหว่าง LMP ถึงวันคลอด) · ผิดปกติ ≥ {{ d.ogtt.min_abn if d.ogtt }} ค่า</small></div>
+    <div class="pb">
+      {% if d.errors.get('ogtt') %}<div class="err">⚠ {{ d.errors['ogtt'] }}</div>
+      {% elif d.ogtt %}
+      <div class="scroll">
+      <table class="t">
+        <tr><th>ชนิด</th><th class="n">ตรวจแล้ว (คน)</th><th class="n">ผิดปกติ ≥ {{ d.ogtt.min_abn }} ค่า (คน)</th>
+          <th class="n">ร้อยละ</th><th class="n">ผิดปกติ 1 ค่า (คน)</th></tr>
+        {% for t in d.ogtt.rows %}
+        <tr><td>{{ t.label }}</td>
+          <td class="n">{{ L('ogtt_' ~ t.key ~ '_test', t.tested) }}</td>
+          <td class="n">{% if t.abn %}<b class="bad">{{ L('ogtt_' ~ t.key ~ '_abn', t.abn) }}</b>{% else %}{{ t.abn }}{% endif %}</td>
+          <td class="n">{{ rate(t.rate) }}</td>
+          <td class="n">{{ t.one }}</td></tr>
+        {% endfor %}
+      </table>
+      </div>
+      <p class="note">เกณฑ์ผิดปกติ (mg/dL): OGTT 100 g ก่อนกิน/1/2/3 ชม. ≥ {{ d.ogtt.cuts.g100|join(' / ') }} ·
+        OGTT 75 g ก่อนกิน/1/2 ชม. ≥ {{ d.ogtt.cuts.g75|join(' / ') }} · ตรวจซ้ำนับชุดล่าสุดของแต่ละชนิด ·
+        กดตัวเลขเพื่อดูรายชื่อและค่าที่ผิดปกติ · OGTT 50 g (คัดกรอง) มีค่าเดียว จึงไม่รวมในตารางนี้ ·
+        HOSxP: lab_order (OGTT ก่อนกิน / หลังกิน 1, 2, 3 ชั่วโมง)</p>
       {% endif %}
     </div>
   </section>

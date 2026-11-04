@@ -11,6 +11,7 @@ from openpyxl.styles import Font
 
 import metrics
 import risk27
+import ogtt
 import sti
 import anemia
 
@@ -45,6 +46,15 @@ def _extra(key, data, cfg, d2=None):
             return "-" if c is None else f"{c:+.1f}"
         return [("Hct ตามลำดับ (GA สัปดาห์)", lambda p: anemia.trail(ser(p))), ("เปลี่ยนไป", delta),
                 ("ผลติดตาม", lambda p: anemia.LABELS.get(anemia.classify(ser(p), cfg), "ยังไม่ได้เจาะ"))]
+    o = re.fullmatch(r"ogtt_(\w+?)_(test|abn)", key or "")
+    if o and o.group(1) in (*ogtt.LABELS, "all"):
+        res, k = data.get("ogtt") or {}, o.group(1)
+
+        def last(p):
+            d = max((s["date"] for s in (res.get(p["anc_id"]) or {}).values() if s.get("date")), default=None)
+            return thai_date(d)
+        return [("ผล OGTT (mg/dL · * = ผิดปกติ)", lambda p: ogtt.detail(res, p["anc_id"], k, cfg)),
+                ("วันที่ตรวจล่าสุด", last)]
     t = re.fullmatch(r"sti_(\w+?)_(test|pos)", key or "")
     if t and t.group(1) in sti.LABELS:
         res = data.get("sti") or {}

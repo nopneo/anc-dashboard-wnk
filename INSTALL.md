@@ -100,6 +100,7 @@ copy .env.example .env ; notepad .env
 |---|---|
 | `ANC_DT_VACCINE_CODES` | รหัสส่งออกวัคซีน dT หญิงตั้งครรภ์ (ค่าเริ่มต้น 201–205 = dTANC1–5) |
 | `ANC_HCT_LAB_IDS` | `anc_lab_id` ของผล Hct (ว่าง = หาจากชื่อ) |
+| `ANC_OGTT_*` | รหัส lab / เกณฑ์ผิดปกติ / จำนวนค่าขั้นต่ำของรายงาน OGTT (ว่าง = เลือกจากชื่อ OGTT ก่อนกิน/หลังกิน 1-3 ชั่วโมง) |
 | `ANC_STI_*_LABS` | รหัส lab โรคติดเชื้อทางเพศสัมพันธ์ (ว่าง = เลือกจากชื่อ VDRL / HBs Ag / Anti-HIV) |
 | `ANC_TARGET_*` | เป้าหมายตัวชี้วัด (%) |
 | `ANC_VILLAGE_CSV` | ไฟล์หมู่บ้าน → รพ.สต. (ค่าเริ่มต้น `village_pcu.csv`) — รูปแบบเดียวกับ mental_health_dashboard |

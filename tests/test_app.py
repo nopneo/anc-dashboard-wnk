@@ -27,12 +27,13 @@ def client(monkeypatch, tmp_path):
     return appmod.app.test_client()
 
 
-def _patch(monkeypatch, pregs=(), visits=(), infants=(), refers=(), sti=None, hct=None):
+def _patch(monkeypatch, pregs=(), visits=(), infants=(), refers=(), sti=None, hct=None, ogtt=None):
     monkeypatch.setattr(queries, "pregnancies", lambda d1, d2, cfg: list(pregs))
     monkeypatch.setattr(queries, "visits", lambda ids: list(visits))
     monkeypatch.setattr(queries, "infants", lambda d1, d2, *a: list(infants))
     monkeypatch.setattr(queries, "sti_results", lambda d1, d2, cfg: dict(sti or {}))
     monkeypatch.setattr(queries, "hct_series", lambda d1, d2, cfg: dict(hct or {}))
+    monkeypatch.setattr(queries, "ogtt_results", lambda d1, d2, cfg: dict(ogtt or {}))
     monkeypatch.setattr(queries, "refers", lambda d1, d2: list(refers))
     monkeypatch.setattr(queries, "postnatal", lambda ids: [])
     monkeypatch.setattr(queries, "risk_hits", lambda d1, d2, cfg: {
@@ -337,6 +338,27 @@ def test_sti_failure_isolated(client, fake_data, monkeypatch):
         raise RuntimeError("down")
 
     monkeypatch.setattr(queries, "sti_results", boom)
+    html = _html(client)
+    assert "ดึงข้อมูลไม่ได้" in html and "ตัวชี้วัดคุณภาพ" in html
+
+
+def test_ogtt_panel_counts_people_without_names(client, fake_data, monkeypatch):
+    monkeypatch.setattr(queries, "ogtt_results", lambda d1, d2, cfg: {
+        1: {"g100": {"date": date(2026, 3, 1), "vals": [98, 190, 140, 120]}},
+        2: {"g100": {"date": date(2026, 3, 1), "vals": [80, 150, 140, 120]}},
+        3: {"g75": {"date": date(2026, 3, 1), "vals": [93, 185, 150]}}})
+    html = _html(client)
+    sec = html[html.index("<h3>ตรวจน้ำตาล OGTT"):]
+    sec = sec[:sec.index("</section>")]
+    assert "OGTT 100 g" in sec and "OGTT 75 g" in sec and "ผิดปกติ ≥ 2 ค่า" in sec
+    assert "98" not in sec and "HN-SECRET" not in html                      # หน้าแดชบอร์ดไม่มีผลรายคน
+
+
+def test_ogtt_failure_isolated(client, fake_data, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(queries, "ogtt_results", boom)
     html = _html(client)
     assert "ดึงข้อมูลไม่ได้" in html and "ตัวชี้วัดคุณภาพ" in html
 

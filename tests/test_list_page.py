@@ -1,3 +1,4 @@
+from datetime import date
 from io import BytesIO
 
 import pytest
@@ -125,6 +126,20 @@ def test_sti_list_shows_result_column(client, monkeypatch):
     login(client)
     html = page(client, f"/list?k=sti_syphilis_pos&{Q}")
     assert html.count('class="row"') == 2 and "ผลตรวจ" in html and "Reactive 1:8" in html
+
+
+def test_ogtt_list_shows_values_of_abnormal_women(client, monkeypatch):
+    pregs = [dict(_preg(i, 25, "30250101"), hn=f"HN{i}") for i in (1, 2, 3)]
+    monkeypatch.setattr(queries, "pregnancies", lambda d1, d2, cfg: pregs)
+    monkeypatch.setattr(queries, "ogtt_results", lambda d1, d2, cfg: {
+        1: {"g100": {"date": date(2026, 3, 1), "vals": [98, 190, 140, 120]}},
+        2: {"g100": {"date": date(2026, 3, 1), "vals": [80, 150, 140, 120]}}})
+    appmod._raw._data.clear()
+    login(client)
+    html = page(client, f"/list?k=ogtt_all_abn&{Q}")
+    assert html.count('class="row"') == 1 and "ก่อนกิน 98*" in html and "1 ชม. 190*" in html
+    html = page(client, f"/list?k=ogtt_all_test&{Q}")
+    assert html.count('class="row"') == 2 and "วันที่ตรวจล่าสุด" in html
 
 
 def test_teen_repeat_list_shows_gravida(client, monkeypatch):

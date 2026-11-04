@@ -24,9 +24,10 @@ import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
+import ogtt
 import risk27
 import sti
-from config import STI_KEYS, village_code
+from config import OGTT_KEYS, STI_KEYS, village_code
 from db import fetch, num
 
 #: ครรภ์ที่ลงทะเบียนก่อนต้นช่วงเกินนี้ คลอดในช่วงไม่ได้แล้ว
@@ -494,6 +495,55 @@ def sti_results(d1, d2, cfg):
         if k:
             got[int(num(r["anc_id"]))][k].append((sti.classify(r.get("result")), r.get("result")))
     return {a: {k: sti.merge(v) for k, v in t.items()} for a, t in got.items()}
+
+
+OGTT_RESULTS = """
+select a.person_anc_id anc_id, lh.lab_order_number ord, lh.order_date d, lo.lab_items_code code, lo.lab_order_result v
+  from person_anc a
+  join person pe on pe.person_id = a.person_id
+  join patient pt on pt.hn = coalesce(nullif(pe.patient_hn, ''),
+        (select p2.hn from patient p2 where p2.cid = pe.cid and pe.cid <> '' limit 1))
+  join lab_head lh on lh.hn = pt.hn
+  join lab_order lo on lo.lab_order_number = lh.lab_order_number
+ where lh.order_date between %(d1)s and %(d2)s and lo.lab_items_code in %(codes)s
+   and lh.order_date >= coalesce(a.lmp, a.anc_register_date)
+   and lh.order_date <= coalesce(a.labor_date, date_add(coalesce(a.lmp, a.anc_register_date), interval 300 day))
+"""
+
+
+def ogtt_codes(cfg):
+    """{ชนิด: (รหัส lab ต่อจุดเจาะ)} — ตั้งใน env (เรียงตามจุด) หรือเลือกจากชื่อรายการ (ตรวจที่หน้า /check)"""
+    picked = None
+    out = {}
+    for k in OGTT_KEYS:
+        want = len(ogtt.POINTS[k])
+        if len(cfg.ogtt_labs.get(k) or ()) == want:
+            out[k] = tuple(cfg.ogtt_labs[k])
+            continue
+        if picked is None:
+            picked = ogtt.pick_codes([(str(r["code"]), r["name"])
+                                      for r in fetch("select lab_items_code code, lab_items_name name from lab_items")])
+        out[k] = picked[k]
+    return out
+
+
+def ogtt_results(d1, d2, cfg):
+    """ใบสั่ง OGTT ที่สั่งในช่วง (ระหว่าง LMP ถึงวันคลอด) → {anc_id: {ชนิด: {"date", "vals": [mg/dL หรือ None ต่อจุด]}}}
+    ครรภ์ตรวจซ้ำ = ชุดล่าสุดของแต่ละชนิด · ชุดที่ไม่มีค่าที่อ่านเป็นตัวเลขได้เลย = ไม่นับว่าตรวจ"""
+    codes = ogtt_codes(cfg)
+    slot = {c: (k, i) for k in OGTT_KEYS for i, c in enumerate(codes[k]) if c}
+    rows = fetch(OGTT_RESULTS, {"d1": d1, "d2": d2, "codes": _nonempty(slot)})
+    sets = defaultdict(dict)
+    for r in rows:
+        k, i = slot[str(r.get("code"))]
+        s = sets[(int(num(r["anc_id"])), k, str(r.get("ord")))]
+        s.setdefault("date", _date(r.get("d")))
+        s.setdefault("vals", [None] * len(ogtt.POINTS[k]))[i] = ogtt.parse(r.get("v"))
+    out = defaultdict(dict)
+    for (anc_id, k, _), s in sorted(sets.items(), key=lambda kv: kv[1]["date"] or date.min):
+        if any(v is not None for v in s["vals"]):
+            out[anc_id][k] = s
+    return dict(out)
 
 
 NAMES = "select hn, pname, fname, lname, addrpart, moopart from patient where hn in %(hns)s"
