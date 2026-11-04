@@ -11,6 +11,7 @@
 {% set base = {'k': f.k, 'd1': f.d1.isoformat(), 'd2': f.d2.isoformat(), 'scope': f.scope} %}
 {% if f.pcu %}{% set _ = base.update({'pcu': f.pcu}) %}{% endif %}
 {% if f.age %}{% set _ = base.update({'age': f.age}) %}{% endif %}
+{% if f.nat %}{% set _ = base.update({'nat': f.nat}) %}{% endif %}
 <body>
 <div class="wrap">
   <header class="hdr">
@@ -18,7 +19,7 @@
     <div class="title">
       <h1>{{ m.label }}</h1>
       <h2>ช่วงข้อมูล {{ period }} <span>· ตัวหาร{{ scopes[f.scope] }}
-        {%- if f.pcu_label %} · {{ f.pcu_label }}{% endif %}{% if f.age %} · อายุ {{ ages[f.age] }}{% endif %}</span></h2>
+        {%- if f.pcu_label %} · {{ f.pcu_label }}{% endif %}{% if f.age %} · อายุ {{ ages[f.age] }}{% endif %}{% if f.nat %} · {{ nats[f.nat] }}{% endif %}</span></h2>
     </div>
     <div class="right">
       <span class="who">👤 {{ user.display }}</span>

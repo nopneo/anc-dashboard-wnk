@@ -258,18 +258,39 @@ def load_data(d1, d2, cfg):
             "sti": _sti(d1, d2, cfg), "hct": _hct(d1, d2, cfg), "ogtt": _ogtt(d1, d2, cfg)}
 
 
-def build_context(d1, d2, scope="area"):
-    """scope = area: ตัวหาร KPI นับหญิงไทยที่อาศัยในอำเภอหรือมาคลอดที่ รพ. (นิยามเอกสาร KPI) · all: ทุกครรภ์ในทะเบียน"""
+def nat_filter(nat, pregs, visits, infants, pnc):
+    """nat = th (หญิงไทย) / fr (ต่างชาติ) → กรองครรภ์ และ visit / PNC ของครรภ์นั้น · ทารกตาม HN มารดา · None = ทั้งหมด"""
+    if nat not in NATS:
+        return pregs, visits, infants, pnc
+    pregs = [p for p in pregs if bool(p.get("thai")) is (nat == "th")]
+    ids, hns = {p["anc_id"] for p in pregs}, {p.get("hn") for p in pregs if p.get("hn")}
+    return (pregs, [v for v in visits if v["anc_id"] in ids], [i for i in infants if i.get("hn") in hns],
+            [x for x in pnc if x["anc_id"] in ids])
+
+
+def nat_refers(nat, refers, pregs):
+    """ส่งต่อที่เลือกจากรหัส Dx อย่างเดียวไม่มีครรภ์ให้ดูสัญชาติ → เมื่อกรองสัญชาติ เหลือเฉพาะรายที่ HN ตรงกับครรภ์ที่กรองแล้ว"""
+    if nat not in NATS:
+        return refers
+    hns = {p.get("hn") for p in pregs}
+    return [r for r in refers if r.get("hn") in hns]
+
+
+def build_context(d1, d2, scope="area", nat=None):
+    """scope = area: ตัวหาร KPI นับหญิงไทยที่อาศัยในอำเภอหรือมาคลอดที่ รพ. (นิยามเอกสาร KPI) · all: ทุกครรภ์ในทะเบียน
+    nat = th / fr: ดูเฉพาะหญิงไทย / ต่างชาติ (ไม่ระบุ = ภาพรวมทั้งหมด)"""
     cfg = load_config()
     scope = scope if scope in SCOPES else "area"
+    nat = nat if nat in NATS else None
     area = (lambda p: metrics.in_area(p, cfg)) if scope == "area" else None
-    key = (d1, d2, scope, cfg)
+    key = (d1, d2, scope, nat, cfg)
     hit = _cache.get(repr(key), cfg.cache_seconds)
     if hit:
         return hit
     errors = {}
 
     pregs, visits, infants, pnc = _safe(errors, "main", lambda: _main_data(d1, d2, cfg), ([], [], [], []))
+    pregs, visits, infants, pnc = nat_filter(nat, pregs, visits, infants, pnc)
     ind = metrics.indicators(pregs, visits, infants, d1, d2, cfg, pnc=pnc, area=area)
     age = metrics.by_age(pregs, visits, d1, d2, cfg, area=area)
 
@@ -280,7 +301,7 @@ def build_context(d1, d2, scope="area"):
     hct_res = _safe(errors, "hct", lambda: anemia.summarize(metrics._delivered(pregs, d1, d2, area),
                                                              _hct(d1, d2, cfg), cfg), None)
     ogtt_res = _safe(errors, "ogtt", lambda: ogtt.summarize(pregs, _ogtt(d1, d2, cfg), cfg), None)
-    refer_rows = _safe(errors, "refer", lambda: metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), [])
+    refer_rows = _safe(errors, "refer", lambda: nat_refers(nat, metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), pregs), [])
     refer = metrics.refer_summary(refer_rows, d1, d2, cfg.refer_dx_exclude)
 
     pcu_map = _safe(errors, "pcu", lambda: load_village_pcu(cfg.village_csv, cfg.chwpart, cfg.amppart), None)
@@ -290,7 +311,7 @@ def build_context(d1, d2, scope="area"):
     ctx = {
         "d1": d1.isoformat(), "d2": d2.isoformat(), "period_label": f"{thai_date(d1)} – {thai_date(d2)}",
         "fetched_at": datetime.now().strftime("%d/%m/") + str(datetime.now().year + 543) + datetime.now().strftime(" %H:%M น."),
-        "scope": scope, "scope_label": SCOPES[scope],
+        "scope": scope, "scope_label": SCOPES[scope], "nat": nat, "nat_label": NATS.get(nat),
         "labor": dict(metrics.labor_completeness(pregs, d1, d2), warn_pct=cfg.labor_warn_pct),
         "ind": ind, "age": age, "tracking": metrics.tracking(pregs, visits, d2),
         "trend": metrics.monthly_trend(pregs, visits, d1, d2),
@@ -486,8 +507,8 @@ def logout():
 @app.route("/")
 def dashboard():
     d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
-    return render_template("dashboard.html", d=build_context(d1, d2, request.args.get("scope", "area")),
-                           labels=metrics.IND_LABELS, scopes=SCOPES,
+    return render_template("dashboard.html", d=build_context(d1, d2, request.args.get("scope", "area"), request.args.get("nat")),
+                           labels=metrics.IND_LABELS, scopes=SCOPES, nats=NATS,
                            print_mode=request.args.get("print") == "1", presets=range_presets(),
                            today_label=thai_full_date(date.today()))
 
@@ -495,7 +516,7 @@ def dashboard():
 @app.route("/api/data.json")
 def api_data():
     d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
-    ctx = build_context(d1, d2, request.args.get("scope", "area"))
+    ctx = build_context(d1, d2, request.args.get("scope", "area"), request.args.get("nat"))
     return app.response_class(json.dumps(ctx, ensure_ascii=False, default=str),
                               mimetype="application/json")
 
@@ -602,9 +623,11 @@ def export(fmt):
         return {"error": "รองรับเฉพาะ png, jpg, pdf" if EXPORT_ENABLED else "ปิดการส่งออกไฟล์"}, 404
     d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
     scope = request.args.get("scope") if request.args.get("scope") in SCOPES else "area"
-    qs = urllib.parse.urlencode({"d1": d1.isoformat(), "d2": d2.isoformat(), "scope": scope, "print": "1"})
+    nat = request.args.get("nat") if request.args.get("nat") in NATS else None
+    qs = urllib.parse.urlencode({"d1": d1.isoformat(), "d2": d2.isoformat(), "scope": scope, "print": "1",
+                                 **({"nat": nat} if nat else {})})
     url = f"http://127.0.0.1:{os.getenv('PORT', '6300')}/?{qs}"
-    name = f"anc_{d1}_{d2}{'' if scope == 'area' else '_all'}.{fmt}"
+    name = f"anc_{d1}_{d2}{'' if scope == 'area' else '_all'}{'_' + nat if nat else ''}.{fmt}"
     blob = _export_cache.get(name, EXPORT_CACHE_TTL)
     if blob is not None:
         return send_file(BytesIO(blob), mimetype=MIME[fmt], as_attachment=True, download_name=name)
@@ -625,6 +648,7 @@ def export(fmt):
 
 
 LIST_AGES = metrics.AGE_GROUPS + ("lt15", "15_19")
+NATS = {"th": "ไทย", "fr": "ต่างชาติ"}
 
 
 def _list_result():
@@ -637,6 +661,7 @@ def _list_result():
         pcu = g.user["hospcode"]                       # ผู้ใช้ รพ.สต. เห็นเฉพาะเขตตัวเอง
     f = {"k": a.get("k") or "", "d1": d1, "d2": d2, "scope": scope, "pcu": pcu,
          "age": a.get("age") if a.get("age") in LIST_AGES else None,
+         "nat": a.get("nat") if a.get("nat") in ("th", "fr") else None,
          "only": a.get("only") if a.get("only") in ("in", "out") else None,
          "q": (a.get("q") or "").strip()[:40] or None}
     cfg = load_config()
@@ -646,7 +671,7 @@ def _list_result():
         pcu_map = None
     data = load_data(d1, d2, cfg)
     area = (lambda p: metrics.in_area(p, cfg)) if scope == "area" else None
-    m = drill.members(f["k"], data, d1, d2, cfg, area, pcu_map, pcu=pcu, age=f["age"])
+    m = drill.members(f["k"], data, d1, d2, cfg, area, pcu_map, pcu=pcu, age=f["age"], nat=f["nat"])
     if m is None:
         abort(404)
     hns = [x.get("hn") for x, _ in m["rows"]]
@@ -662,7 +687,7 @@ def _list_result():
 
 def _audit_detail(f, n):
     return " ".join(f"{k}={v}" for k, v in (("k", f["k"]), ("d", f"{f['d1']}..{f['d2']}"), ("scope", f["scope"]),
-                                            ("pcu", f["pcu"]), ("age", f["age"]), ("only", f["only"]),
+                                            ("pcu", f["pcu"]), ("age", f["age"]), ("nat", f["nat"]), ("only", f["only"]),
                                             ("q", f["q"]), ("n", n)) if v is not None)
 
 
@@ -678,7 +703,7 @@ def list_page():
     audit("view_list", _audit_detail(f, len(rows)))
     period = f"{thai_date(f['d1'])} – {thai_date(f['d2'])}"
     return _no_store(app.make_response(render_template(
-        "list.html", f=f, m=m, head=head, rows=rows, period=period, scopes=SCOPES, pcu_names=pcu_names,
+        "list.html", f=f, m=m, head=head, rows=rows, period=period, scopes=SCOPES, pcu_names=pcu_names, nats=NATS,
         ages={"teen": "< 20 ปี", "repro": "20–34 ปี", "elder": "≥ 35 ปี", "lt15": "< 15 ปี", "15_19": "15–19 ปี"})))
 
 
@@ -690,7 +715,7 @@ def list_export():
     audit("export_list", _audit_detail(f, len(rows)) + (" by_pcu" if by_pcu else ""))
     meta = [("รายชื่อ", m["label"]), ("ช่วงข้อมูล", f"{thai_date(f['d1'])} – {thai_date(f['d2'])}"),
             ("ตัวหาร", SCOPES[f["scope"]]), ("รพ.สต.", f["pcu_label"] or "ทั้งหมด"),
-            ("กลุ่มอายุ", f["age"] or "ทั้งหมด"),
+            ("กลุ่มอายุ", f["age"] or "ทั้งหมด"), ("สัญชาติ", NATS.get(f["nat"], "ทั้งหมด")),
             ("เงื่อนไข", {"in": "เฉพาะเข้าเกณฑ์", "out": "เฉพาะไม่เข้าเกณฑ์"}.get(f["only"], "ทั้งหมด")),
             ("จำนวน", len(rows)), ("ส่งออกโดย", g.user["display"]), ("เวลา", datetime.now().strftime("%Y-%m-%d %H:%M")),
             ("หมายเหตุ", "มีข้อมูลส่วนบุคคลของผู้ป่วย — ใช้เพื่อการดูแล/ติดตามเท่านั้น ห้ามเผยแพร่")]

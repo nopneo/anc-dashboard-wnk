@@ -217,3 +217,19 @@ def test_hct_trend_match(seed, scope):
     assert M(data, "hct_anemic", area) == (r["tested"]["num"], r["anemic"])
     for g in r["groups"]:
         check_count(data, "hct_" + g["key"], g["n"], area)
+
+
+def test_nationality_filter_matches_split():
+    data = dataset(1)
+    th = sum(1 for p in data["pregs"] if p["thai"])
+    allm = drill.members("new", data, D1, D2, CFG, None, PCU_MAP)
+    only_th = drill.members("new", data, D1, D2, CFG, None, PCU_MAP, nat="th")
+    only_fr = drill.members("new", data, D1, D2, CFG, None, PCU_MAP, nat="fr")
+    assert len(only_th["rows"]) + len(only_fr["rows"]) == len(allm["rows"])
+    assert all(p["thai"] for p, _ in only_th["rows"]) and not any(p["thai"] for p, _ in only_fr["rows"])
+    assert len(only_th["rows"]) <= th
+    res = risk27.summarize([p for p, _ in allm["rows"]], data["risk_hits"], CFG)
+    assert len(drill.members("r27_any", data, D1, D2, CFG, None, PCU_MAP, nat="th")["rows"]) == res["den_th"]
+    refer_hns = {r["hn"] for r in drill.members("refer", data, D1, D2, CFG, None, PCU_MAP, nat="fr")["rows"]
+                 for r in [r[0]]}
+    assert refer_hns <= {p["hn"] for p in data["pregs"] if not p["thai"]}

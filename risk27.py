@@ -171,6 +171,9 @@ LABELS = {**{it["key"]: it["label"] for it in ITEMS}, **{k: lab for k, _, lab in
 def summarize(pregs, hits, cfg):
     """pregs = ครรภ์รายใหม่ในช่วง · hits = {"form","dx","text","body"} จาก queries.risk_hits"""
     den = len(pregs)
+    thai = {p["anc_id"] for p in pregs if p.get("thai")}                # ที่เหลือ = ต่างชาติ (สัญชาติไม่ใช่ ANC_THAI_NATIONALITY)
+    den_th = len(thai)
+    split = lambda ids: (len(ids & thai), len(ids - thai))              # (ไทย, ต่างชาติ)
     flagged = {}                       # anc_id -> ชุด key ที่พบ
     items = []
     for it in ITEMS:
@@ -187,22 +190,29 @@ def summarize(pregs, hits, cfg):
         dx_codes = set(cfg.risk_dx.get(key, ()))
         avail = [s for s, on in (("F", it["form"]), ("C", it["calc"]), ("D", dx_codes),
                                  ("T", cfg.risk_text.get(key))) if on]
+        n_th, n_fr = split(found)
         items.append({**it, "sources": avail, "n": len(found), "pct": _pct(len(found), den), "known": known,
+                      "n_th": n_th, "n_fr": n_fr, "pct_th": _pct(n_th, den_th), "pct_fr": _pct(n_fr, den - den_th),
                       "by_source": {s: by[s] for s in SOURCE_ORDER if by[s]}})
 
     extras = []
     for key, fid, label in EXTRAS:
         ids = {p["anc_id"] for p in pregs if fid in hits["form"].get(p["anc_id"], set())}
-        extras.append({"key": key, "label": label, "n": len(ids), "pct": _pct(len(ids), den)})
+        n_th, n_fr = split(ids)
+        extras.append({"key": key, "label": label, "n": len(ids), "pct": _pct(len(ids), den),
+                       "n_th": n_th, "n_fr": n_fr, "pct_th": _pct(n_th, den_th), "pct_fr": _pct(n_fr, den - den_th)})
         for i in ids:
             flagged.setdefault(i, set()).add(key)
+
+    def tally(ids):
+        n_th, n_fr = split(ids)
+        return {"num": len(ids), "den": den, "pct": _pct(len(ids), den), "num_th": n_th, "num_fr": n_fr,
+                "pct_th": _pct(n_th, den_th), "pct_fr": _pct(n_fr, den - den_th)}
 
     groups = []
     for gkey, glabel in GROUPS:
         keys = {it["key"] for it in ITEMS if it["group"] == gkey}
-        n = sum(1 for ks in flagged.values() if ks & keys)
-        groups.append({"key": gkey, "label": glabel, "num": n, "den": den, "pct": _pct(n, den)})
-    anyn = len(flagged)
+        groups.append({"key": gkey, "label": glabel, **tally({i for i, ks in flagged.items() if ks & keys})})
     top = sorted((x for x in items if x["n"]), key=lambda x: (-x["n"], x["num"]))[:10]
-    return {"den": den, "items": items, "extras": extras, "groups": groups, "top": top,
-            "any": {"num": anyn, "den": den, "pct": _pct(anyn, den)}}
+    return {"den": den, "den_th": den_th, "den_fr": den - den_th, "items": items, "extras": extras,
+            "groups": groups, "top": top, "any": tally(set(flagged))}

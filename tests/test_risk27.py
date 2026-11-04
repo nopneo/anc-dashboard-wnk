@@ -100,3 +100,17 @@ def test_env_overrides_for_dx_and_text_and_thresholds():
     assert cfg.risk_text["twin"] == "twin|แฝด3"
     assert (cfg.risk_age_low, cfg.risk_height_cm) == (18, 150)
     assert cfg.risk_dx["pre_dm"] == risk27.DEFAULT_DX["pre_dm"]
+
+
+def test_split_thai_and_foreign():
+    pregs = [dict(preg(1, 16), thai=True), dict(preg(2, 16), thai=False), dict(preg(3, 25), thai=True),
+             dict(preg(4, 36), thai=False)]
+    res = risk27.summarize(pregs, hits(form={4: {"7"}}), CFG)
+    assert (res["den"], res["den_th"], res["den_fr"]) == (4, 2, 2)
+    young = item(res, "age_lt17")
+    assert (young["n"], young["n_th"], young["n_fr"]) == (2, 1, 1) and young["pct_th"] == 50.0
+    twin = item(res, "twin")
+    assert (twin["n_th"], twin["n_fr"]) == (0, 1)
+    assert (res["any"]["num"], res["any"]["num_th"], res["any"]["num_fr"]) == (3, 1, 2)
+    g = next(x for x in res["groups"] if x["key"] == "age_body")
+    assert g["num"] == g["num_th"] + g["num_fr"]

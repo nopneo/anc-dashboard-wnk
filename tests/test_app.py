@@ -206,10 +206,10 @@ def test_range_presets():
 
 def test_active_preset_pill(client, fake_data):
     html = _html(client)                                   # 2026-01-01..2026-06-30 ไม่ตรง preset ใด
-    assert html.count('class="pill on"') == 1             # มีแค่ปุ่มตัวหาร
+    assert html.count('class="pill on"') == 2             # ปุ่มตัวหาร + สัญชาติ "ทั้งหมด"
     p = appmod.range_presets(date.today())[2]
     html = _html(client, f"/?d1={p['d1']}&d2={p['d2']}")
-    assert html.count('class="pill on"') == 2
+    assert html.count('class="pill on"') == 3
     assert f'class="pill on" href="?d1={p["d1"]}&amp;d2={p["d2"]}&amp;scope=area">ปีงบนี้</a>' in html
 
 
@@ -390,3 +390,15 @@ def test_amph_row_counts(client, fake_data):
     sec = html[html.index("Amphetamine"):]
     sec = sec[:sec.index("</tr>")]
     assert "2/6" in sec and "1/2" in sec           # ตรวจ 2 จาก 6 รายใหม่ · ผลบวก 1 จาก 2 ที่ตรวจ
+
+
+def test_nationality_filter_on_dashboard(client, fake_data):
+    rng = "?d1=2026-01-01&d2=2026-06-30"
+    d = lambda q="": client.get("/api/data.json" + rng + q).get_json()
+    r = d()["risk27"]
+    assert (r["den"], r["den_th"], r["den_fr"]) == (6, 5, 1)
+    assert d("&nat=th")["risk27"]["den"] == 5 and d("&nat=fr")["risk27"]["den"] == 1
+    assert d("&nat=xx")["nat"] is None                                  # ค่าแปลก = ภาพรวม
+    html = _html(client, "/" + rng + "&nat=fr")
+    assert "เฉพาะต่างชาติ" in html and "nat=fr" in html
+    assert "nat=" not in _html(client).split("สัญชาติ:")[0]            # ไม่เลือก = ลิงก์อื่นไม่พก nat

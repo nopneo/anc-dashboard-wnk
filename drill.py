@@ -89,8 +89,13 @@ def _r27(key):
     return None
 
 
-def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
+def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None, nat=None):
     """data = {"pregs", "visits", "infants", "refers" (ผ่าน select_refers แล้ว), "pnc", "risk_hits", "sti", "hct", "ogtt"}"""
+    if nat is not None and (key in INFANT or key in REFER):
+        # ทารก/ส่งต่อไม่มีสัญชาติเอง → ใช้สัญชาติของครรภ์ที่ HN มารดาตรงกัน (ตรงกับที่แดชบอร์ดกรอง)
+        hns = {p.get("hn") for p in data["pregs"] if bool(p.get("thai")) is (nat == "th")}
+        data = dict(data, infants=[i for i in data["infants"] if i.get("hn") in hns],
+                    refers=[r for r in data["refers"] if r.get("hn") in hns])
     if key in INFANT:
         return _infants(key, data, d1, d2, cfg, pcu_map, pcu)
     if key in REFER:
@@ -101,7 +106,8 @@ def members(key, data, d1, d2, cfg, area, pcu_map, pcu=None, age=None):
     r27 = _r27(key) if key.startswith("r27") else None
     if key not in PREG and r27 is None:
         return None
-    pregs = [p for p in data["pregs"] if _pcu_ok(p.get("village"), pcu, pcu_map, cfg) and _age_ok(p.get("age"), age)]
+    pregs = [p for p in data["pregs"] if _pcu_ok(p.get("village"), pcu, pcu_map, cfg) and _age_ok(p.get("age"), age)
+             and (nat is None or bool(p.get("thai")) is (nat == "th"))]       # nat: th = หญิงไทย · fr = ต่างชาติ
     vmap = metrics._by_anc(data["visits"])
     vs = lambda p: vmap.get(p["anc_id"], [])
     new = [p for p in pregs if metrics._in(p.get("register_date"), d1, d2)]

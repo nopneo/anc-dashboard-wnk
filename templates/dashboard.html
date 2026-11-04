@@ -12,8 +12,8 @@
 {% macro fmt(v) %}{% if v is none %}—{% elif v is integer %}{{ '{:,}'.format(v) }}{% else %}{{ v }}{% endif %}{% endmacro %}
 
 {#- ตัวเลขที่กดดูรายชื่อได้ (ต้อง login) · โหมดพิมพ์/ส่งออก และเมื่อปิดหน้ารายชื่อ แสดงเป็นตัวเลขธรรมดา -#}
-{% macro L(key, text) %}{% if list_on and not print_mode %}<a class="drill" title="ดูรายชื่อ"
-  href="{{ url_for('list_page', k=key, d1=d.d1, d2=d.d2, scope=d.scope, **kwargs) }}">{{ text }}</a>{% else %}{{ text }}{% endif %}{% endmacro %}
+{% macro L(key, text) %}{% if list_on and not print_mode %}{% set kw = dict(kwargs) %}{% if d.nat and 'nat' not in kw %}{% set _ = kw.update(nat=d.nat) %}{% endif %}<a class="drill" title="ดูรายชื่อ"
+  href="{{ url_for('list_page', k=key, d1=d.d1, d2=d.d2, scope=d.scope, **kw) }}">{{ text }}</a>{% else %}{{ text }}{% endif %}{% endmacro %}
 
 {#- ช่องอัตรา: แดงเมื่อไม่ผ่านเป้า · จางเมื่อตัวหาร < 5 -#}
 {% macro rate(r) %}<span class="{{ 'bad' if r.ok is sameas false }} {{ 'low' if r.low_base }}"
@@ -58,7 +58,7 @@
         <div><b>{{ today_label }}</b><small id="clock">ข้อมูล ณ {{ d.fetched_at }}</small></div></div>
       {% if not print_mode %}
         {% if check_allowed %}<a class="btn white" href="{{ url_for('check_page') }}">🔎 ตรวจข้อมูล</a>{% endif %}
-        {% if export_enabled %}{% set q = '?d1=' ~ d.d1 ~ '&d2=' ~ d.d2 ~ '&scope=' ~ d.scope %}
+        {% if export_enabled %}{% set q = '?d1=' ~ d.d1 ~ '&d2=' ~ d.d2 ~ '&scope=' ~ d.scope ~ ('&nat=' ~ d.nat if d.nat else '') %}
         <a class="btn red dl" href="{{ url_for('export', fmt='pdf') }}{{ q }}">⬇ PDF</a>{% endif %}
       {% endif %}
     </div>
@@ -66,20 +66,27 @@
 
   <!-- ============================================================ filters -->
   <div class="filters">
-    <span class="period">ช่วงข้อมูล <b>{{ d.period_label }}</b> · ตัวหาร{{ d.scope_label }} · HOSxP (อ่านอย่างเดียว)
+    <span class="period">ช่วงข้อมูล <b>{{ d.period_label }}</b> · ตัวหาร{{ d.scope_label }}{% if d.nat %} · <b class="natflag">เฉพาะ{{ d.nat_label }}</b>{% endif %} · HOSxP (อ่านอย่างเดียว)
       · บันทึกวันคลอด {{ fmt(d.labor.pct) }}{{ '%' if d.labor.pct is not none }} ของครรภ์ครบกำหนด</span>
     {% if not print_mode %}
     <span class="lbl">▼ ช่วงเวลา:</span>
     {% for p in presets %}
-      <a class="pill{{ ' on' if p.d1 == d.d1 and p.d2 == d.d2 }}" href="?d1={{ p.d1 }}&amp;d2={{ p.d2 }}&amp;scope={{ d.scope }}">{{ p.label }}</a>
+      <a class="pill{{ ' on' if p.d1 == d.d1 and p.d2 == d.d2 }}" href="?d1={{ p.d1 }}&amp;d2={{ p.d2 }}&amp;scope={{ d.scope }}{{ '&amp;nat=' ~ d.nat if d.nat }}">{{ p.label }}</a>
     {% endfor %}
     <span class="lbl">ตัวหาร:</span>
     {% for key, label in scopes.items() %}
-      <a class="pill{{ ' on' if key == d.scope }}" href="?d1={{ d.d1 }}&amp;d2={{ d.d2 }}&amp;scope={{ key }}"
+      <a class="pill{{ ' on' if key == d.scope }}" href="?d1={{ d.d1 }}&amp;d2={{ d.d2 }}&amp;scope={{ key }}{{ '&amp;nat=' ~ d.nat if d.nat }}"
          title="{{ 'หญิงไทยที่อาศัยในอำเภอ หรืออยู่นอกเขตแต่มาคลอดที่ รพ. (นิยามเอกสาร KPI)' if key == 'area' else 'ทุกครรภ์ในทะเบียนฝากครรภ์' }}">{{ label }}</a>
+    {% endfor %}
+    <span class="lbl">สัญชาติ:</span>
+    <a class="pill{{ ' on' if not d.nat }}" href="?d1={{ d.d1 }}&amp;d2={{ d.d2 }}&amp;scope={{ d.scope }}" title="ภาพรวมทุกสัญชาติ">ทั้งหมด</a>
+    {% for key, label in nats.items() %}
+      <a class="pill{{ ' on' if key == d.nat }}" href="?d1={{ d.d1 }}&amp;d2={{ d.d2 }}&amp;scope={{ d.scope }}&amp;nat={{ key }}"
+         title="{{ 'ดูเฉพาะหญิงไทย' if key == 'th' else 'ดูเฉพาะหญิงต่างชาติ (สัญชาติไม่ใช่ไทย รวมที่ไม่ระบุ)' }}">เฉพาะ{{ label }}</a>
     {% endfor %}
     <form method="get">
       <input type="hidden" name="scope" value="{{ d.scope }}">
+      {% if d.nat %}<input type="hidden" name="nat" value="{{ d.nat }}">{% endif %}
       <input type="date" name="d1" value="{{ d.d1 }}" aria-label="ตั้งแต่">
       <input type="date" name="d2" value="{{ d.d2 }}" aria-label="ถึง">
       <button type="submit">กำหนดเอง</button>
@@ -384,9 +391,14 @@
       <div class="otiles o4">
         {% for g in r.groups %}
         <div class="otile"><span class="ol">{{ g.label }}</span><b>{{ L('r27g_' ~ g.key, g.num, only='in') }}</b>
-          <small>ราย · {{ fmt(g.pct) }}{{ '%' if g.pct is not none }} ของ {{ g.den }} รายใหม่</small></div>
+          <small>ราย · {{ fmt(g.pct) }}{{ '%' if g.pct is not none }} ของ {{ g.den }} รายใหม่<br>
+            ไทย {{ L('r27g_' ~ g.key, g.num_th, nat='th') }} · ต่างชาติ {{ L('r27g_' ~ g.key, g.num_fr, nat='fr') }}</small></div>
         {% endfor %}
       </div>
+      <p class="note">รายใหม่ {{ r.den }} ราย = <b>ไทย {{ r.den_th }}</b> · <b>ต่างชาติ {{ r.den_fr }}</b>
+        (สัญชาติอื่นนอกจากไทย รวมที่ไม่ระบุ) · ครรภ์เสี่ยงอย่างน้อย 1 ข้อ: ไทย {{ L('r27_any', r.any.num_th, nat='th') }}
+        ({{ fmt(r.any.pct_th) }}{{ '%' if r.any.pct_th is not none }}) · ต่างชาติ {{ L('r27_any', r.any.num_fr, nat='fr') }}
+        ({{ fmt(r.any.pct_fr) }}{{ '%' if r.any.pct_fr is not none }})</p>
       <p class="note">ที่มาของข้อมูล:
         <span class="src" title="แบบคัดกรองความเสี่ยงใน HOSxP">F</span> ฟอร์ม HOSxP ·
         <span class="src" title="คำนวณจากอายุ / ส่วนสูง / BMI">C</span> คำนวณ ·
@@ -397,10 +409,14 @@
         <div>
           <h4 class="k sub-h">{{ glabel }}</h4>
           <table class="rtab">
+            <tr class="rh"><td></td><td></td><td class="n">รวม</td><td class="p"></td>
+              <td class="n" title="หญิงไทย {{ r.den_th }} ราย">ไทย</td><td class="n" title="ต่างชาติ {{ r.den_fr }} ราย">ต่างชาติ</td><td></td></tr>
             {% for it in r["items"] if it.group == gkey %}
             <tr><td class="no">{{ it.num }}</td><td>{{ it.label }}
                 {% if it.known < r.den %}<small title="มีข้อมูลพอคำนวณ">({{ it.known }}/{{ r.den }} ราย มีข้อมูล)</small>{% endif %}</td>
               <td class="n">{{ L('r27_' ~ it.key, it.n, only='in') }}</td><td class="p">{{ fmt(it.pct) }}{{ '%' if it.pct is not none }}</td>
+              <td class="n">{{ L('r27_' ~ it.key, it.n_th, only='in', nat='th') }}</td>
+              <td class="n">{{ L('r27_' ~ it.key, it.n_fr, only='in', nat='fr') }}</td>
               <td class="s">{% for s in it.sources %}<span class="src {{ 't' if s == 'T' }}">{{ s }}</span>{% endfor %}</td></tr>
             {% endfor %}
           </table>
@@ -409,8 +425,11 @@
         <div>
           <h4 class="k sub-h">เพิ่มเติมจากฟอร์ม HOSxP <small>ไม่อยู่ใน 27 ข้อ แต่นับเป็นครรภ์เสี่ยง</small></h4>
           <table class="rtab">
+            <tr class="rh"><td></td><td></td><td class="n">รวม</td><td class="p"></td><td class="n">ไทย</td><td class="n">ต่างชาติ</td><td></td></tr>
             {% for e in r.extras %}<tr><td></td><td>{{ e.label }}</td><td class="n">{{ L('r27_' ~ e.key, e.n, only='in') }}</td>
-              <td class="p">{{ fmt(e.pct) }}{{ '%' if e.pct is not none }}</td><td class="s"><span class="src">F</span></td></tr>{% endfor %}
+              <td class="p">{{ fmt(e.pct) }}{{ '%' if e.pct is not none }}</td>
+              <td class="n">{{ L('r27_' ~ e.key, e.n_th, only='in', nat='th') }}</td>
+              <td class="n">{{ L('r27_' ~ e.key, e.n_fr, only='in', nat='fr') }}</td><td class="s"><span class="src">F</span></td></tr>{% endfor %}
           </table>
         </div>
       </div>
@@ -616,7 +635,7 @@
     <a class="q-sky" href="{{ url_for('check_page') }}"><span class="qi">🔎</span>ตรวจข้อมูลก่อนใช้</a>
     <a class="q-mint" href="{{ url_for('village_pcu_template') }}"><span class="qi">🏘️</span>แม่แบบ village_pcu.csv</a>
     {% endif %}
-    {% if export_enabled %}{% set q = '?d1=' ~ d.d1 ~ '&d2=' ~ d.d2 ~ '&scope=' ~ d.scope %}
+    {% if export_enabled %}{% set q = '?d1=' ~ d.d1 ~ '&d2=' ~ d.d2 ~ '&scope=' ~ d.scope ~ ('&nat=' ~ d.nat if d.nat else '') %}
     <a class="q-pink dl" href="{{ url_for('export', fmt='jpg') }}{{ q }}"><span class="qi">🖼️</span>ส่งออก JPG</a>
     <a class="q-peach dl" href="{{ url_for('export', fmt='pdf') }}{{ q }}"><span class="qi">📄</span>ส่งออก PDF</a>
     {% endif %}
