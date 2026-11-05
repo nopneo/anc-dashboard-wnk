@@ -144,11 +144,12 @@ select lo.lab_items_code code, li.lab_items_name name, count(*) n,
 #: ผลตรวจโรคติดเชื้อที่จัดกลุ่มไม่ได้ (ว่าง / ข้อความอื่น) เกินนี้ (%) → warn
 STI_UNCLEAR_WARN_PCT = 20.0
 #: ชื่อ lab ที่อาจเกี่ยวกับโรคติดเชื้อ — แสดงให้เห็นรายการที่แอปไม่ได้เลือก
-STI_CANDIDATES = "vdrl|^rpr|tpha|syphil|hbs|hiv|hcv|hepatitis|amphetamine"
+STI_CANDIDATES = "vdrl|^rpr|tpha|syphil|hbs|hiv|hcv|hepatitis|amphetamine|^nipt"
 
 
 def _sti(d1, d2, cfg):
     labs, anc = queries.sti_codes(cfg)
+    labs, anc = ({k: d.get(k) or () for k in sti.LABELS} for d in (labs, anc))
     used = {c for k in sti.LABELS for c in labs[k]}
     rows = fetch("""
 select lo.lab_items_code code, li.lab_items_name name, lo.lab_order_result result, count(*) n
@@ -172,16 +173,16 @@ select lo.lab_items_code code, li.lab_items_name name, lo.lab_order_result resul
         n = sum(by_code.get(str(c), (0, 0))[0] for c in labs[k])
         unclear = sum(by_code.get(str(c), (0, 0))[1] for c in labs[k])
         u = metrics.pct(unclear, n)
-        bad_k = not labs[k] or n == 0 or (u or 0) >= STI_UNCLEAR_WARN_PCT
+        bad_k = not labs[k] or n == 0 or (k != "nipt" and (u or 0) >= STI_UNCLEAR_WARN_PCT)   # NIPT ไม่มีผลบวก/ลบ จึงไม่ดูผลไม่ชัด
         warn = warn or bad_k
-        notes.append(f"{label}: " + ("ไม่มีรหัส lab" if not labs[k] else f"{n} ผล ในช่วง · ผลไม่ชัด {u or 0}%")
+        notes.append(f"{label}: " + ("ไม่มีรหัส lab" if not labs[k] else f"{n} ผล ในช่วง" + ("" if k == "nipt" else f" · ผลไม่ชัด {u or 0}%"))
                      + (" ⚠" if bad_k else ""))
     uses = " · ".join(f"{label} " + (", ".join(labs[k]) or "-") + (f" + ANC {', '.join(map(str, anc[k]))}" if anc[k] else "")
                       for k, label in sti.LABELS.items())
     hint = " · ".join(notes) + (" — ตรวจรหัส lab ของ รพ. (ตั้ง ANC_STI_*_LABS) หรือแก้การบันทึกผลให้เป็น Reactive/Non-reactive, "
                                 "Positive/Negative" if warn else "")
     return _item("sti_codes", "โรคติดเชื้อทางเพศสัมพันธ์ + ปัสสาวะ Amphetamine (LABFU)", uses, found,
-                 _status(False, warn), "ANC_STI_SYPHILIS_LABS · ANC_STI_HBV_LABS · ANC_STI_HIV_LABS · ANC_STI_AMPH_LABS (+ _ANC_LABS)", hint)
+                 _status(False, warn), "ANC_STI_SYPHILIS_LABS · ANC_STI_HBV_LABS · ANC_STI_HIV_LABS · ANC_STI_AMPH_LABS · ANC_STI_NIPT_LABS (+ _ANC_LABS)", hint)
 
 
 #: ผล OGTT ที่อ่านเป็นตัวเลขไม่ได้เกินนี้ (%) → warn

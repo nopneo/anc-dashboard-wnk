@@ -33,7 +33,7 @@ VISIT8_TARGETS = {2566: 50, 2567: 55, 2568: 60, 2569: 65, 2570: 70}
 #: เป้าตั้งครรภ์ซ้ำในหญิงอายุ < 20 ปี (เอกสาร 2.1, ยิ่งต่ำยิ่งดี) ตามปีงบประมาณ พ.ศ. — ตั้งเองด้วย ANC_TARGET_TEEN_REPEAT
 TEEN_REPEAT_TARGETS = {2567: 13.0, 2568: 12.5, 2569: 12.0, 2570: 11.5}
 #: การตรวจโรคติดเชื้อทางเพศสัมพันธ์ (sti.py) — รหัส lab ต่อการตรวจตั้งด้วย ANC_STI_<KEY>_LABS / ANC_STI_<KEY>_ANC_LABS
-STI_KEYS = ("syphilis", "hbv", "hiv", "amph")
+STI_KEYS = ("syphilis", "hbv", "hiv", "amph", "nipt")
 #: OGTT (ogtt.py) — รหัส lab ต่อชนิดตั้งด้วย ANC_OGTT_<KEY>_LABS (เรียงตามจุดเจาะ) · เกณฑ์ ANC_OGTT_<KEY>_CUT
 OGTT_KEYS = ("g100", "g75")
 

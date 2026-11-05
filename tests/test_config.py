@@ -15,7 +15,7 @@ def test_defaults():
     assert c.targets == {"early12": 75, "visit5": 75, "visit8": None, "dt": 90, "dental": 50, "anemia": 14, "lbw": 7,
                          "postnatal": 75, "quality": 70, "iodine": None, "asphyxia": 25, "teen_repeat": None}
     assert c.data_audited is False and not hasattr(c, "wait_from_col")
-    assert c.sti_labs == {"syphilis": (), "hbv": (), "hiv": (), "amph": ()} and c.sti_anc_labs["hiv"] == ()
+    assert c.sti_labs == {"syphilis": (), "hbv": (), "hiv": (), "amph": (), "nipt": ()} and c.sti_anc_labs["hiv"] == ()
     assert load_config({"ANC_STI_AMPH_LABS": "139"}).sti_labs["amph"] == ("139",)
 
 

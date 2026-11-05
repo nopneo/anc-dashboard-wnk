@@ -52,7 +52,7 @@ def fake_data(monkeypatch):
     _patch(monkeypatch, pregs, visits, infants, refers,
            sti={1: {"syphilis": ("pos", "Reactive 1:8"), "hiv": ("neg", "Negative")},
                 2: {"syphilis": ("neg", "Non Reactive"), "hbv": ("unclear", "-"), "amph": ("pos", "Positive")},
-                3: {"amph": ("neg", "Negative")}},
+                3: {"amph": ("neg", "Negative"), "nipt": ("unclear", "-")}},
            hct={1: [{"date": date(2025, 11, 1), "ga": 9, "hct": 29.0}, {"date": date(2026, 3, 1), "ga": 26, "hct": 34.0}],
                 2: [{"date": date(2025, 11, 1), "ga": 9, "hct": 30.0}, {"date": date(2026, 3, 1), "ga": 26, "hct": 30.5}],
                 3: [{"date": date(2025, 11, 1), "ga": 9, "hct": 36.0}]})
@@ -404,6 +404,13 @@ def test_amph_row_counts(client, fake_data):
     sec = html[html.index("Amphetamine"):]
     sec = sec[:sec.index("</tr>")]
     assert "2/6" in sec and "1/2" in sec           # ตรวจ 2 จาก 6 รายใหม่ · ผลบวก 1 จาก 2 ที่ตรวจ
+
+
+def test_nipt_row_counts_tested_only(client, fake_data):
+    html = _html(client)
+    sec = html[html.index("NIPT (คัดกรองดาวน์"):]
+    sec = sec[:sec.index("</tr>")]
+    assert "1/6" in sec and "–" in sec             # ได้ตรวจ 1 จาก 6 รายใหม่ · ไม่มีคอลัมน์ผลบวก
 
 
 def test_nationality_filter_on_dashboard(client, fake_data):

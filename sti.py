@@ -18,6 +18,8 @@ TESTS = (
     ("hiv", "HIV (Anti-HIV)", r"^(anti-?\s*hiv|hiv\s*ag)\b", r"hiv"),
     # ชื่อต้องขึ้นต้นด้วย Methamphetamine / Amphetamine (ไม่เอา Ampicillin) · anc_lab ไม่มีรายการนี้ จึงใช้ regex ที่ไม่มีวันตรง
     ("amph", "ปัสสาวะ Amphetamine (Methamphetamine)", r"^(meth)?amphetamine\b", r"(?!)"),
+    # NIPT-NGS(คัดกรองดาวน์) — นับเฉพาะ "ได้ตรวจ" (ใบสั่ง lab) · ผลเป็นรายงานภายนอก ไม่มีผลบวก/ลบในฐาน
+    ("nipt", "NIPT (คัดกรองดาวน์ด้วย cfDNA)", r"^nipt", r"(?!)"),
 )
 LABELS = {k: label for k, label, _, _ in TESTS}
 

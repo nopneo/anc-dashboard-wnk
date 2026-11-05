@@ -472,7 +472,7 @@
 
   <!-- ============================================================ 11c. STI -->
   <section class="panel">
-    <div class="ph"><span class="ic">🧪</span><h3>โรคติดเชื้อทางเพศสัมพันธ์และสารเสพติด</h3>
+    <div class="ph"><span class="ic">🧪</span><h3>โรคติดเชื้อทางเพศสัมพันธ์ สารเสพติด และ NIPT</h3>
       <small>ผล lab ระหว่างตั้งครรภ์ (LMP ถึงวันคลอด) · ฐาน = ฝากครรภ์รายใหม่ในช่วง</small></div>
     <div class="pb">
       {% if d.errors.get('sti') %}<div class="err">⚠ {{ d.errors['sti'] }}</div>
@@ -485,14 +485,15 @@
         <tr><td>{{ t.label }}</td>
           <td class="n">{{ L('sti_' ~ t.key ~ '_test', t.tested.num ~ '/' ~ t.tested.den) }}</td>
           <td class="n">{{ rate(t.tested) }}</td>
-          <td class="n">{% if t.pos.num %}<b class="bad">{{ L('sti_' ~ t.key ~ '_pos', t.pos.num ~ '/' ~ t.pos.den, only='in') }}</b>{% else %}{{ L('sti_' ~ t.key ~ '_pos', t.pos.num ~ '/' ~ t.pos.den) }}{% endif %}</td>
+          {% if t.key == 'nipt' %}<td class="n">–</td><td class="n">–</td><td class="n">–</td>
+          {% else %}<td class="n">{% if t.pos.num %}<b class="bad">{{ L('sti_' ~ t.key ~ '_pos', t.pos.num ~ '/' ~ t.pos.den, only='in') }}</b>{% else %}{{ L('sti_' ~ t.key ~ '_pos', t.pos.num ~ '/' ~ t.pos.den) }}{% endif %}</td>
           <td class="n">{{ rate(t.pos) }}</td>
-          <td class="n">{{ t.unclear }}</td>
+          <td class="n">{{ t.unclear }}</td>{% endif %}
           <td class="n">{{ L('sti_' ~ t.key ~ '_test', t.untested, only='out') }}</td></tr>
         {% endfor %}
       </table>
       </div>
-      <p class="note">HOSxP: lab_order (VDRL / TPHA · HBs Ag · Anti-HIV · Methamphetamine ปัสสาวะ) · person_anc_lab ·
+      <p class="note">HOSxP: lab_order (VDRL / TPHA · HBs Ag · Anti-HIV · Methamphetamine ปัสสาวะ · NIPT) · person_anc_lab ·
         ผลพิมพ์มือจัดกลุ่มเป็นบวก (Reactive / Positive) · ลบ (Non-reactive / Negative) · ไม่ชัด (ว่าง / Inconclusive / อื่น ๆ — ไม่นับเป็นลบ) ·
         ตรวจหลายครั้งพบบวกครั้งใดนับเป็นบวก · รหัส lab ที่ใช้ดูได้ที่หน้าตรวจข้อมูล</p>
       {% endif %}
