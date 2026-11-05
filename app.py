@@ -116,6 +116,18 @@ def range_presets(today=None):
     return [{"label": l, "d1": a.isoformat(), "d2": b.isoformat()} for l, a, b in out]
 
 
+def fy_options(today=None, n=6):
+    """ตัวเลือกปีงบประมาณย้อนหลัง n ปี (ปีงบนี้สิ้นสุดที่วันนี้) สำหรับ dropdown บนหัวหน้า"""
+    today = today or date.today()
+    fy = _fy_start(today)
+    out = []
+    for i in range(n):
+        a = fy.replace(year=fy.year - i)
+        b = today if i == 0 else a.replace(year=a.year + 1) - timedelta(days=1)
+        out.append({"label": f"ปีงบ {a.year + 544}", "d1": a.isoformat(), "d2": b.isoformat()})
+    return out
+
+
 @app.template_filter("th_month")
 def th_month(ym):
     """'2026-03' → 'มี.ค. 69'"""
@@ -509,7 +521,7 @@ def dashboard():
     d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
     return render_template("dashboard.html", d=build_context(d1, d2, request.args.get("scope", "area"), request.args.get("nat")),
                            labels=metrics.IND_LABELS, scopes=SCOPES, nats=NATS,
-                           print_mode=request.args.get("print") == "1", presets=range_presets(),
+                           print_mode=request.args.get("print") == "1", presets=range_presets(), fy_opts=fy_options(),
                            today_label=thai_full_date(date.today()))
 
 

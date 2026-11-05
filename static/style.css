@@ -73,6 +73,11 @@ a { color: var(--blue); }
   text-decoration: none;
 }
 .filters .pill.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.filters .fysel {
+  border: 1px solid #c9d6f2; border-radius: 999px; padding: 4px 12px; background: #fff; color: var(--navy);
+  font: inherit; cursor: pointer;
+}
+.filters .fysel.on { background: var(--blue); border-color: var(--blue); color: #fff; }
 .filters form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .filters input { min-width: 0; }
 .filters input { font: inherit; border: 1px solid #c9d6f2; border-radius: 999px; padding: 3px 10px; color: var(--navy); background: #fff; }

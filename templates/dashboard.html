@@ -73,6 +73,11 @@
     {% for p in presets %}
       <a class="pill{{ ' on' if p.d1 == d.d1 and p.d2 == d.d2 }}" href="?d1={{ p.d1 }}&amp;d2={{ p.d2 }}&amp;scope={{ d.scope }}{{ '&amp;nat=' ~ d.nat if d.nat }}">{{ p.label }}</a>
     {% endfor %}
+    <select class="fysel{{ ' on' if fy_opts | selectattr('d1', 'equalto', d.d1) | list }}" aria-label="เลือกปีงบประมาณ"
+            onchange="if(this.value)location.href='?'+this.value+'&amp;scope={{ d.scope }}{{ '&amp;nat=' ~ d.nat if d.nat }}'">
+      <option value="">เลือกปีงบ…</option>
+      {% for o in fy_opts %}<option value="d1={{ o.d1 }}&amp;d2={{ o.d2 }}"{{ ' selected' if o.d1 == d.d1 }}>{{ o.label }}</option>{% endfor %}
+    </select>
     <span class="lbl">ตัวหาร:</span>
     {% for key, label in scopes.items() %}
       <a class="pill{{ ' on' if key == d.scope }}" href="?d1={{ d.d1 }}&amp;d2={{ d.d2 }}&amp;scope={{ key }}{{ '&amp;nat=' ~ d.nat if d.nat }}"

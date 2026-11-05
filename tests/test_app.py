@@ -204,6 +204,20 @@ def test_range_presets():
     assert (p[2]["d1"], p[3]["d1"], p[3]["d2"]) == ("2026-10-01", "2025-10-01", "2026-09-30")
 
 
+def test_fy_options():
+    o = appmod.fy_options(date(2026, 11, 15), n=3)
+    assert [x["label"] for x in o] == ["ปีงบ 2570", "ปีงบ 2569", "ปีงบ 2568"]
+    assert (o[0]["d1"], o[0]["d2"]) == ("2026-10-01", "2026-11-15")
+    assert (o[1]["d1"], o[1]["d2"]) == ("2025-10-01", "2026-09-30")
+    assert (o[2]["d1"], o[2]["d2"]) == ("2024-10-01", "2025-09-30")
+
+
+def test_fy_select_on_dashboard(client, fake_data):
+    html = _html(client)
+    assert 'aria-label="เลือกปีงบประมาณ"' in html
+    assert "ปีงบ 2569" in html
+
+
 def test_active_preset_pill(client, fake_data):
     html = _html(client)                                   # 2026-01-01..2026-06-30 ไม่ตรง preset ใด
     assert html.count('class="pill on"') == 2             # ปุ่มตัวหาร + สัญชาติ "ทั้งหมด"
