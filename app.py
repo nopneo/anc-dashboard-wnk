@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from functools import wraps
 from io import BytesIO
@@ -542,6 +543,10 @@ def dashboard():
                            today_label=thai_full_date(date.today()))
 
 
+_fy3_pool = ThreadPoolExecutor(max_workers=1)
+_fy3_jobs, _fy3_done, _fy3_lock = {}, {}, threading.Lock()
+
+
 @app.route("/fy3")
 def fy3_fragment():
     """ตารางแนวโน้ม 3 ปีงบ — ดึงแยกหลังหน้าหลักโหลดเสร็จ (ดึงข้อมูล 3 ปีใช้เวลานานกว่าเวลารอของ proxy)"""
@@ -552,11 +557,21 @@ def fy3_fragment():
     nat = request.args.get("nat")
     nat = nat if nat in NATS else None
     area = (lambda p: metrics.in_area(p, cfg)) if scope == "area" else None
+    key = repr((d2, scope, nat, cfg))
+    with _fy3_lock:
+        job = _fy3_jobs.get(key)
+        if job is None or (job.done() and job.exception() is not None):
+            job = _fy3_jobs[key] = _fy3_pool.submit(fy_trend, d2, cfg, area, nat)
+    if not job.done():
+        return app.response_class("", status=202)                  # ยังคำนวณอยู่ — หน้าเว็บถามซ้ำ
     try:
-        years = fy_trend(d2, cfg, area, nat)
+        years = job.result()
     except Exception:
         app.logger.exception("section fy3 failed")
         years = None
+    if years is not None and time.time() - _fy3_done.setdefault(key, time.time()) > cfg.cache_seconds:
+        _fy3_jobs.pop(key, None)                                    # เกินอายุ cache — รอบหน้าคำนวณใหม่
+        _fy3_done.pop(key, None)
     return render_template("fy3.html", years=years, keys=FY_TREND_KEYS, lower_better=metrics.LOWER_BETTER,
                            labels={"new": "ฝากครรภ์รายใหม่ (ราย)", **metrics.IND_LABELS})
 

@@ -1,3 +1,4 @@
+import time
 from datetime import date
 
 import pytest
@@ -425,7 +426,13 @@ def test_fy_trend_loaded_separately(client, fake_data):
     html = _html(client, "/?d1=2025-10-01&d2=2026-06-30")
     assert "แนวโน้มตัวชี้วัด 3 ปีงบประมาณ" in html and "/fy3?" in html       # หน้าหลักไม่รอข้อมูล 3 ปี
     assert "แนวโน้มตัวชี้วัด 3 ปีงบประมาณ" not in _html(client, "/?d1=2025-10-01&d2=2026-06-30&print=1")
-    frag = _html(client, "/fy3?d1=2025-10-01&d2=2026-06-30")
+    for _ in range(100):                                            # คำนวณเบื้องหลัง: 202 จนเสร็จ
+        r = client.get("/fy3?d1=2025-10-01&d2=2026-06-30")
+        if r.status_code == 200:
+            break
+        assert r.status_code == 202
+        time.sleep(0.1)
+    frag = r.get_data(as_text=True)
     assert "ปีงบ 2567" in frag and "เทียบปีก่อน" in frag and "<html" not in frag
 
 
