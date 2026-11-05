@@ -160,6 +160,7 @@ table.t .src { color: var(--muted); font-size: 12px; }
 table.t tr.sub td { font-size: 13px; color: var(--muted); padding-top: 3px; padding-bottom: 3px; }
 table.t td.id { font-weight: 700; color: var(--navy); white-space: nowrap; }
 .bad { color: #dc2626; font-weight: 700; }
+.good { color: #16a34a; font-weight: 700; }
 .low { opacity: .5; }
 .code { color: var(--muted); font-size: 12.5px; }
 .st { display: inline-block; border-radius: 999px; padding: 2px 12px; font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; font-family: 'Kanit'; }

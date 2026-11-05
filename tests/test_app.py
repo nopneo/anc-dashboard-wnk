@@ -413,6 +413,17 @@ def test_nipt_row_counts_tested_only(client, fake_data):
     assert "1/6" in sec and "–" in sec             # ได้ตรวจ 1 จาก 6 รายใหม่ · ไม่มีคอลัมน์ผลบวก
 
 
+def test_fy_trend_three_fiscal_years(client, fake_data):
+    ctx = appmod.build_context(date(2025, 10, 1), date(2026, 6, 30))
+    y = ctx["fy3"]
+    assert [x["label"] for x in y] == ["ปีงบ 2567", "ปีงบ 2568", "ปีงบ 2569"]
+    assert (y[0]["d1"], y[0]["d2"], y[0]["partial"]) == ("2023-10-01", "2024-09-30", False)
+    assert (y[2]["d1"], y[2]["d2"], y[2]["partial"]) == ("2025-10-01", "2026-06-30", True)
+    assert set(appmod.FY_TREND_KEYS) <= set(y[0]["ind"])
+    html = _html(client, "/?d1=2025-10-01&d2=2026-06-30")
+    assert "แนวโน้มตัวชี้วัด 3 ปีงบประมาณ" in html and "ปีงบ 2567" in html
+
+
 def test_nationality_filter_on_dashboard(client, fake_data):
     rng = "?d1=2026-01-01&d2=2026-06-30"
     d = lambda q="": client.get("/api/data.json" + rng + q).get_json()

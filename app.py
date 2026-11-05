@@ -288,6 +288,23 @@ def nat_refers(nat, refers, pregs):
     return [r for r in refers if r.get("hn") in hns]
 
 
+FY_TREND_KEYS = ("new", "early12", "visit5", "visit8", "postnatal", "quality", "dt", "dental", "anemia", "lbw", "teen_repeat")
+
+
+def fy_trend(d2, cfg, area=None, nat=None, n=3):
+    """ตัวชี้วัดหลักของ n ปีงบล่าสุด (นับจากปีงบที่มี d2) เรียงเก่า→ใหม่ · ปีงบปัจจุบันนับถึง d2 (partial) · ใช้ตัวหาร/สัญชาติเดียวกับหน้า"""
+    anchor = _fy_start(d2)
+    out = []
+    for i in range(n - 1, -1, -1):
+        a = anchor.replace(year=anchor.year - i)
+        full_end = a.replace(year=a.year + 1) - timedelta(days=1)
+        end = min(full_end, d2)
+        pregs, visits, infants, pnc = nat_filter(nat, *_main_data(a, end, cfg))
+        out.append({"label": f"ปีงบ {a.year + 544}", "d1": a.isoformat(), "d2": end.isoformat(), "partial": end < full_end,
+                    "ind": metrics.indicators(pregs, visits, infants, a, end, cfg, pnc=pnc, area=area)})
+    return out
+
+
 def build_context(d1, d2, scope="area", nat=None):
     """scope = area: ตัวหาร KPI นับหญิงไทยที่อาศัยในอำเภอหรือมาคลอดที่ รพ. (นิยามเอกสาร KPI) · all: ทุกครรภ์ในทะเบียน
     nat = th / fr: ดูเฉพาะหญิงไทย / ต่างชาติ (ไม่ระบุ = ภาพรวมทั้งหมด)"""
@@ -313,6 +330,7 @@ def build_context(d1, d2, scope="area", nat=None):
     hct_res = _safe(errors, "hct", lambda: anemia.summarize(metrics._delivered(pregs, d1, d2, area),
                                                              _hct(d1, d2, cfg), cfg), None)
     ogtt_res = _safe(errors, "ogtt", lambda: ogtt.summarize(pregs, _ogtt(d1, d2, cfg), cfg), None)
+    fy3 = _safe(errors, "fy3", lambda: fy_trend(d2, cfg, area, nat), None)
     refer_rows = _safe(errors, "refer", lambda: nat_refers(nat, metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), pregs), [])
     refer = metrics.refer_summary(refer_rows, d1, d2, cfg.refer_dx_exclude)
 
@@ -329,6 +347,8 @@ def build_context(d1, d2, scope="area", nat=None):
         "trend": metrics.monthly_trend(pregs, visits, d1, d2),
         "pcu": pcu, "pcu_missing": pcu_map is None and "pcu" not in errors,
         "unmapped": unmapped, "refer": refer,
+        "fy3": fy3, "fy3_keys": FY_TREND_KEYS, "fy3_labels": {"new": "ฝากครรภ์รายใหม่ (ราย)", **metrics.IND_LABELS},
+        "lower_better": sorted(metrics.LOWER_BETTER),
         "outcome": outcome, "risk27": risk27_res, "risk_groups": risk27.GROUPS, "sti": sti_res, "hct": hct_res, "ogtt": ogtt_res,
         "hct_cutoff_t2": cfg.hct_cutoff_t2, "hct_improve": cfg.hct_improve,
         "alerts": metrics.alerts(ind, pcu, age, unmapped, outcome) if "main" not in errors else [],
