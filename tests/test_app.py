@@ -414,14 +414,19 @@ def test_nipt_row_counts_tested_only(client, fake_data):
 
 
 def test_fy_trend_three_fiscal_years(client, fake_data):
-    ctx = appmod.build_context(date(2025, 10, 1), date(2026, 6, 30))
-    y = ctx["fy3"]
+    y = appmod.fy_trend(date(2026, 6, 30), appmod.load_config())
     assert [x["label"] for x in y] == ["ปีงบ 2567", "ปีงบ 2568", "ปีงบ 2569"]
     assert (y[0]["d1"], y[0]["d2"], y[0]["partial"]) == ("2023-10-01", "2024-09-30", False)
     assert (y[2]["d1"], y[2]["d2"], y[2]["partial"]) == ("2025-10-01", "2026-06-30", True)
     assert set(appmod.FY_TREND_KEYS) <= set(y[0]["ind"])
+
+
+def test_fy_trend_loaded_separately(client, fake_data):
     html = _html(client, "/?d1=2025-10-01&d2=2026-06-30")
-    assert "แนวโน้มตัวชี้วัด 3 ปีงบประมาณ" in html and "ปีงบ 2567" in html
+    assert "แนวโน้มตัวชี้วัด 3 ปีงบประมาณ" in html and "/fy3?" in html       # หน้าหลักไม่รอข้อมูล 3 ปี
+    assert "แนวโน้มตัวชี้วัด 3 ปีงบประมาณ" not in _html(client, "/?d1=2025-10-01&d2=2026-06-30&print=1")
+    frag = _html(client, "/fy3?d1=2025-10-01&d2=2026-06-30")
+    assert "ปีงบ 2567" in frag and "เทียบปีก่อน" in frag and "<html" not in frag
 
 
 def test_nationality_filter_on_dashboard(client, fake_data):

@@ -330,7 +330,6 @@ def build_context(d1, d2, scope="area", nat=None):
     hct_res = _safe(errors, "hct", lambda: anemia.summarize(metrics._delivered(pregs, d1, d2, area),
                                                              _hct(d1, d2, cfg), cfg), None)
     ogtt_res = _safe(errors, "ogtt", lambda: ogtt.summarize(pregs, _ogtt(d1, d2, cfg), cfg), None)
-    fy3 = _safe(errors, "fy3", lambda: fy_trend(d2, cfg, area, nat), None)
     refer_rows = _safe(errors, "refer", lambda: nat_refers(nat, metrics.select_refers(_refers(d1, d2, cfg), pregs, cfg), pregs), [])
     refer = metrics.refer_summary(refer_rows, d1, d2, cfg.refer_dx_exclude)
 
@@ -347,8 +346,6 @@ def build_context(d1, d2, scope="area", nat=None):
         "trend": metrics.monthly_trend(pregs, visits, d1, d2),
         "pcu": pcu, "pcu_missing": pcu_map is None and "pcu" not in errors,
         "unmapped": unmapped, "refer": refer,
-        "fy3": fy3, "fy3_keys": FY_TREND_KEYS, "fy3_labels": {"new": "ฝากครรภ์รายใหม่ (ราย)", **metrics.IND_LABELS},
-        "lower_better": sorted(metrics.LOWER_BETTER),
         "outcome": outcome, "risk27": risk27_res, "risk_groups": risk27.GROUPS, "sti": sti_res, "hct": hct_res, "ogtt": ogtt_res,
         "hct_cutoff_t2": cfg.hct_cutoff_t2, "hct_improve": cfg.hct_improve,
         "alerts": metrics.alerts(ind, pcu, age, unmapped, outcome) if "main" not in errors else [],
@@ -543,6 +540,25 @@ def dashboard():
                            labels=metrics.IND_LABELS, scopes=SCOPES, nats=NATS,
                            print_mode=request.args.get("print") == "1", presets=range_presets(), fy_opts=fy_options(),
                            today_label=thai_full_date(date.today()))
+
+
+@app.route("/fy3")
+def fy3_fragment():
+    """ตารางแนวโน้ม 3 ปีงบ — ดึงแยกหลังหน้าหลักโหลดเสร็จ (ดึงข้อมูล 3 ปีใช้เวลานานกว่าเวลารอของ proxy)"""
+    d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
+    cfg = load_config()
+    scope = request.args.get("scope", "area")
+    scope = scope if scope in SCOPES else "area"
+    nat = request.args.get("nat")
+    nat = nat if nat in NATS else None
+    area = (lambda p: metrics.in_area(p, cfg)) if scope == "area" else None
+    try:
+        years = fy_trend(d2, cfg, area, nat)
+    except Exception:
+        app.logger.exception("section fy3 failed")
+        years = None
+    return render_template("fy3.html", years=years, keys=FY_TREND_KEYS, lower_better=metrics.LOWER_BETTER,
+                           labels={"new": "ฝากครรภ์รายใหม่ (ราย)", **metrics.IND_LABELS})
 
 
 @app.route("/api/data.json")

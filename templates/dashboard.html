@@ -444,33 +444,24 @@
     </div>
   </section>
 
-  <!-- ============================================================ 11b2. 3 ปีงบ -->
+  <!-- ============================================================ 11b2. 3 ปีงบ (โหลดแยก /fy3) -->
+  {% if not print_mode %}
   <section class="panel">
     <div class="ph"><span class="ic">📈</span><h3>แนวโน้มตัวชี้วัด 3 ปีงบประมาณ</h3>
       <small>ตัวหาร{{ d.scope_label }}{% if d.nat %} · เฉพาะ{{ d.nat_label }}{% endif %} · เทียบปีงบล่าสุดกับปีก่อนหน้า</small></div>
-    <div class="pb">
-      {{ sec_error('fy3') }}
-      {% if d.fy3 %}
-      <div class="scroll">
-      <table class="t">
-        <tr><th>ตัวชี้วัด</th>{% for y in d.fy3 %}<th class="n">{{ y.label }}{% if y.partial %}<br><small>ถึง {{ y.d2 }}</small>{% endif %}</th>{% endfor %}
-          <th class="n">เทียบปีก่อน</th></tr>
-        {% for k in d.fy3_keys %}
-        {% set cur = d.fy3[-1].ind[k] %}{% set prev = d.fy3[-2].ind[k] %}
-        {% set dv = (cur.value - prev.value) if cur.value is not none and prev.value is not none else none %}
-        {% set good = none if dv is none else ((dv < 0) if k in d.lower_better else (dv > 0)) %}
-        <tr><td>{{ d.fy3_labels[k] }}</td>
-          {% for y in d.fy3 %}<td class="n">{{ rate(y.ind[k]) }}</td>{% endfor %}
-          <td class="n">{% if dv is none %}–{% elif dv == 0 %}={% else %}<b class="{{ 'good' if good else 'bad' }}">{{ '▲' if dv > 0 else '▼' }} {{ fmt(dv | abs) }}{{ '' if k == 'new' else ' จุด' }}</b>{% endif %}</td></tr>
-        {% endfor %}
-      </table>
-      </div>
-      <p class="note">ปีงบก่อนหน้านับครบ 1 ต.ค.–30 ก.ย. ปีงบล่าสุดนับถึงวันที่สิ้นสุดของช่วงที่เลือก (ยังไม่ครบปี ตัวเลขอาจเปลี่ยน) ·
-        ▲▼ = ผลต่างเป็นจุดร้อยละ (สีเขียว = ดีขึ้น · สีแดง = แย่ลง · ตัวชี้วัดที่ต่ำดีกว่าอย่าง LBW กลับทิศให้แล้ว) ·
-        ใช้นิยามและตัวหารเดียวกับตารางตัวชี้วัดด้านบน</p>
-      {% endif %}
+    <div class="pb" id="fy3" data-url="{{ url_for('fy3_fragment', d1=d.d1, d2=d.d2, scope=d.scope, nat=d.nat) }}">
+      <p class="note">กำลังโหลดข้อมูล 3 ปีงบ (ครั้งแรกอาจใช้เวลาประมาณ 1–2 นาที)…</p>
     </div>
+    <script>
+      (function () {
+        var box = document.getElementById('fy3');
+        fetch(box.dataset.url, {credentials: 'same-origin'}).then(function (r) { return r.text(); })
+          .then(function (h) { box.innerHTML = h; })
+          .catch(function () { box.innerHTML = '<div class="err">⚠ ดึงข้อมูลไม่ได้</div>'; });
+      })();
+    </script>
   </section>
+  {% endif %}
 
   <!-- ============================================================ 11c. anemia trend -->
   {% set h = d.hct %}
