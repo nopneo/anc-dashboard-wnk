@@ -103,10 +103,6 @@ select a.person_anc_id anc_id, pt.hn,
        coalesce(nullif(pt.nationality, ''), pe.nationality) nationality, a.labour_hospcode,
        pt.chwpart, pt.amppart, pt.tmbpart, pt.moopart, v.village_code v_code,
        a.anc_register_date register_date, a.lmp, a.labor_date,
-       (select l.anc_lab_result from person_anc_lab l
-          join person_anc_service s on s.person_anc_service_id = l.person_anc_service_id
-         where s.person_anc_id = a.person_anc_id and l.anc_lab_id in %(hct)s and s.pa_week >= %(late)s
-         order by s.anc_service_date desc limit 1) hct_lab,
        case when a.blood_check2_date is not null then a.blood_hct_result end hct_anc,
        (a.vaccine_dtanc1_date is not null or a.vaccine_dtanc2_date is not null or a.vaccine_dtanc3_date is not null
         or a.vaccine_dtanc4_date is not null or a.vaccine_dtanc5_date is not null
@@ -123,10 +119,7 @@ select a.person_anc_id anc_id, pt.hn,
        exists (select 1 from opitemrece op join drugitems di on di.icode = op.icode
                 where op.hn = pt.hn and di.did in %(iod)s
                   and op.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s)) has_iodine,
-       (exists (select 1 from person_anc_lab l join person_anc_service s on s.person_anc_service_id = l.person_anc_service_id
-                 where s.person_anc_id = a.person_anc_id and l.anc_lab_id in %(hct)s
-                   and l.anc_lab_result is not null and l.anc_lab_result <> '')
-        or exists (select 1 from lab_head lh join lab_order lo on lo.lab_order_number = lh.lab_order_number
+       (exists (select 1 from lab_head lh join lab_order lo on lo.lab_order_number = lh.lab_order_number
                     where lh.hn = pt.hn and lo.lab_items_code in %(cbc)s
                       and lh.order_date between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s))
        ) q_cbc,
@@ -143,8 +136,7 @@ select a.person_anc_id anc_id, pt.hn,
         or exists (select 1 from ovstdiag x where x.hn = pt.hn and x.icd10 in %(dmdx)s
                     and x.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date, %(d2)s))
        ) q_dm,
-       (a.has_risk = 'Y' or exists (select 1 from person_anc_risk r where r.person_anc_id = a.person_anc_id)
-        or exists (select 1 from person_anc_classifying c where c.person_anc_id = a.person_anc_id and c.check_value = 'Y')) has_risk,
+       (a.has_risk = 'Y' or exists (select 1 from person_anc_risk r where r.person_anc_id = a.person_anc_id)) has_risk,
        (exists (select 1 from ovstdiag x where x.hn = pt.hn and (left(x.icd10, 3) in %(htn)s or left(x.icd10, 4) in %(htn)s)
                 and x.vstdate between coalesce(a.lmp, a.anc_register_date) and coalesce(a.labor_date + interval 42 day, %(d2)s))
         or exists (select 1 from iptdiag y join ipt on ipt.an = y.an where ipt.hn = pt.hn
@@ -177,6 +169,41 @@ select a.person_anc_id anc_id, pt.hn,
 """
 
 
+# person_anc_lab / person_anc_classifying ใน HOSxP ไม่มี index ที่ person_anc_service_id / person_anc_id
+# ถ้าใส่เป็น subquery ใน PREGNANCIES จะสแกนทั้งตารางซ้ำทุกครรภ์ (~10 วินาที) → ดึงรวดเดียวเป็นชุดแล้วจับคู่ใน Python
+ANC_HCT_LABS = """
+select s.person_anc_id anc_id, s.anc_service_date d, s.pa_week ga, l.anc_lab_result res
+  from person_anc_service s
+  join person_anc_lab l on l.person_anc_service_id = s.person_anc_service_id
+ where s.person_anc_id in %(ids)s and l.anc_lab_id in %(hct)s
+"""
+
+ANC_CLASSIFYING_Y = """
+select distinct person_anc_id anc_id from person_anc_classifying where check_value = 'Y' and person_anc_id in %(ids)s
+"""
+
+
+def _anc_lab_extras(anc_ids, hct, late):
+    """คืน (hct_late, has_hct, risk_cls) ต่อ anc_id — ความหมายเดียวกับ subquery เดิม
+    hct_late = ผล Hct ครั้งล่าสุดที่ GA >= late · has_hct = มีผล Hct ที่ไม่ว่าง · risk_cls = ฟอร์มคัดกรองมีข้อ = Y"""
+    latest, has_hct, cls = {}, set(), set()
+    ids = list(anc_ids)
+    for i in range(0, len(ids), BATCH):
+        chunk = {"ids": tuple(ids[i:i + BATCH]), "hct": hct}
+        for r in fetch(ANC_HCT_LABS, chunk):
+            aid, res = int(num(r["anc_id"])), r.get("res")
+            if res is not None and str(res) != "":
+                has_hct.add(aid)
+            ga = _int_or_none(r.get("ga"))
+            d = _date(r.get("d"))
+            if ga is not None and ga >= late and d is not None:
+                if aid not in latest or d > latest[aid][0]:
+                    latest[aid] = (d, res)
+        for r in fetch(ANC_CLASSIFYING_Y, chunk):
+            cls.add(int(num(r["anc_id"])))
+    return {k: v[1] for k, v in latest.items()}, has_hct, cls
+
+
 def pregnancies(d1, d2, cfg):
     hct = hct_lab_ids(cfg)
     cbc, dm = lab_codes(cfg)
@@ -187,19 +214,22 @@ def pregnancies(d1, d2, cfg):
             "htn": _nonempty(cfg.dx_htn), "gdm": _nonempty(cfg.dx_gdm), "pph": _nonempty(cfg.dx_pph),
             "pre": _nonempty(cfg.dx_preterm)}
     out = []
-    for r in fetch(PREGNANCIES, args):
-        out.append({"anc_id": int(num(r["anc_id"])), "hn": r.get("hn"), "age": _int_or_none(r.get("age")),
+    rows = fetch(PREGNANCIES, args)
+    hct_late, has_hct, risk_cls = _anc_lab_extras([int(num(r["anc_id"])) for r in rows], hct, cfg.hct_late_ga)
+    for r in rows:
+        aid = int(num(r["anc_id"]))
+        out.append({"anc_id": aid, "hn": r.get("hn"), "age": _int_or_none(r.get("age")),
                     "age_labor": _int_or_none(r.get("age_labor")), "gravida": _int_or_none(r.get("gravida")),
                     "village": _village(r), "register_date": _date(r.get("register_date")),
                     "lmp": _date(r.get("lmp")), "labor_date": _date(r.get("labor_date")),
-                    "hct_late": _float(r.get("hct_lab")) or _float(r.get("hct_anc")),
+                    "hct_late": _float(hct_late.get(aid)) or _float(r.get("hct_anc")),
                     "has_dt": _flag(r.get("has_dt")), "has_dental": _flag(r.get("has_dental")),
                     "thai": str(r.get("nationality") or "").strip() == cfg.thai_nationality,
                     "labour_hospcode": (str(r.get("labour_hospcode") or "").strip() or None),
-                    "has_iodine": _flag(r.get("has_iodine")), "q_cbc": _flag(r.get("q_cbc")),
+                    "has_iodine": _flag(r.get("has_iodine")), "q_cbc": aid in has_hct or _flag(r.get("q_cbc")),
                     "q_thal": _flag(r.get("q_thal")), "q_us": _flag(r.get("q_us")),
                     "q_down": _flag(r.get("q_down")), "q_dm": _flag(r.get("q_dm")),
-                    "has_risk": _flag(r.get("has_risk")), "cx_htn": _flag(r.get("cx_htn")),
+                    "has_risk": aid in risk_cls or _flag(r.get("has_risk")), "cx_htn": _flag(r.get("cx_htn")),
                     "cx_gdm": _flag(r.get("cx_gdm")), "cx_pph": _flag(r.get("cx_pph")),
                     "cx_preterm": _flag(r.get("cx_preterm")), "death_date": _date(r.get("death_date")),
                     "labour_place": r.get("labour_place") or None})

@@ -319,6 +319,12 @@ def build_context(d1, d2, scope="area", nat=None):
         return hit
     errors = {}
 
+    # ดึงข้อมูลดิบทุกชุดพร้อมกัน (เดิมรอต่อกันทีละชุด) — ผลเก็บใน _memo ให้บรรทัดด้านล่างหยิบใช้ทันที
+    # ชุดไหนผิดพลาดในเธรดไม่ต้องสนใจ: _safe ด้านล่างเรียกซ้ำแล้วบันทึก error ตามเดิม
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for f in (_main_data, _risk_hits, _sti, _hct, _ogtt, _refers):
+            ex.submit(f, d1, d2, cfg)
+
     pregs, visits, infants, pnc = _safe(errors, "main", lambda: _main_data(d1, d2, cfg), ([], [], [], []))
     pregs, visits, infants, pnc = nat_filter(nat, pregs, visits, infants, pnc)
     ind = metrics.indicators(pregs, visits, infants, d1, d2, cfg, pnc=pnc, area=area)

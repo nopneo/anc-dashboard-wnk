@@ -13,9 +13,14 @@ D1, D2 = date(2026, 1, 1), date(2026, 6, 30)
 class FakeFetch:
     def __init__(self):
         self.calls, self.rows = [], []
+        self.hct_rows, self.cls_rows = [], []       # ผลของ 2 query แยกที่ pregnancies() ดึงเพิ่ม (Hct ใน ANC · ฟอร์มคัดกรอง = Y)
 
     def __call__(self, sql, args=None):
         db._bind(sql, args)                 # จับ % ที่ไม่ได้ escape / พารามิเตอร์หาย
+        if "select distinct person_anc_id anc_id from person_anc_classifying" in " ".join(sql.split()):
+            return list(self.cls_rows)
+        if "from person_anc_service s" in sql and "join person_anc_lab" in sql:
+            return list(self.hct_rows)
         self.calls.append((sql, args))
         return list(self.rows)
 
@@ -30,7 +35,7 @@ def fake_fetch(monkeypatch):
 def test_pregnancies_converts_types(fake_fetch):
     fake_fetch.rows = [{"anc_id": "7", "hn": "0001", "age": "19", "chwpart": "30", "amppart": "25", "tmbpart": "01",
                         "moopart": "03", "register_date": "2026-01-05", "lmp": "2025-11-20", "labor_date": None,
-                        "hct_lab": "", "hct_anc": "31.5", "has_dt": "1", "has_dental": "0"}]
+                        "hct_anc": "31.5", "has_dt": "1", "has_dental": "0"}]
     r = queries.pregnancies(D1, D2, CFG)[-1]
     assert r["village"] == "30250103" and r["age"] == 19 and r["lmp"] == date(2025, 11, 20)
     assert r["has_dt"] is True and r["has_dental"] is False and r["hct_late"] == 31.5 and r["labor_date"] is None
@@ -40,9 +45,25 @@ def test_hct_prefers_lab_result_and_rejects_text(fake_fetch):
     base = {"anc_id": "1", "hn": "1", "age": None, "chwpart": None, "amppart": None, "tmbpart": None,
             "moopart": None, "register_date": "2026-01-05", "lmp": None, "labor_date": None,
             "has_dt": "0", "has_dental": "0"}
-    fake_fetch.rows = [dict(base, hct_lab="30", hct_anc="36"), dict(base, hct_lab=None, hct_anc="ปกติ")]
+    base2 = dict(base, anc_id="2")
+    fake_fetch.rows = [dict(base, hct_anc="36"), dict(base2, hct_anc="ปกติ")]
+    fake_fetch.hct_rows = [{"anc_id": "1", "d": "2026-02-01", "ga": "28", "res": "30"},
+                           {"anc_id": "1", "d": "2026-03-01", "ga": "34", "res": "31"},      # ล่าสุดที่ GA >= เกณฑ์ ใช้ค่านี้
+                           {"anc_id": "1", "d": "2026-04-01", "ga": "10", "res": "40"}]      # GA ต่ำกว่าเกณฑ์ ไม่เอา
     rows = queries.pregnancies(D1, D2, load_config({"ANC_HCT_LAB_IDS": "6,7"}))
-    assert [r["hct_late"] for r in rows] == [30.0, None] and rows[0]["village"] is None
+    assert [r["hct_late"] for r in rows] == [31.0, None] and rows[0]["village"] is None
+
+
+def test_anc_page_lab_and_classifying_flags(fake_fetch):
+    """ผล Hct ที่ลงหน้า ANC (ไม่ว่าง) นับเป็น q_cbc · ฟอร์มคัดกรอง = Y นับเป็น has_risk — ดึงเป็นชุดแยกแล้วจับคู่ใน Python"""
+    base = {"hn": "1", "register_date": "2026-01-05", "has_dt": "0", "has_dental": "0", "q_cbc": "0", "has_risk": "0"}
+    fake_fetch.rows = [dict(base, anc_id="1"), dict(base, anc_id="2"), dict(base, anc_id="3")]
+    fake_fetch.hct_rows = [{"anc_id": "1", "d": "2026-02-01", "ga": "5", "res": "33"},
+                           {"anc_id": "2", "d": "2026-02-01", "ga": "5", "res": ""}]          # ผลว่าง ไม่นับ
+    fake_fetch.cls_rows = [{"anc_id": "3"}]
+    rows = queries.pregnancies(D1, D2, load_config({"ANC_HCT_LAB_IDS": "6"}))
+    assert [r["q_cbc"] for r in rows] == [True, False, False]
+    assert [r["has_risk"] for r in rows] == [False, False, True]
 
 
 def test_codes_are_parameters_not_literals(fake_fetch):
@@ -124,10 +145,10 @@ def test_pregnancy_falls_back_to_person_village(fake_fetch):
     """ครรภ์ที่ person ไม่ผูก patient: ใช้รหัสหมู่บ้าน 8 หลักจาก village ของ person"""
     fake_fetch.rows = [{"anc_id": "1", "hn": None, "age": "22", "chwpart": None, "amppart": None, "tmbpart": None,
                         "moopart": None, "v_code": "30250105", "register_date": "2026-01-05", "lmp": None,
-                        "labor_date": None, "hct_lab": None, "hct_anc": None, "has_dt": "0", "has_dental": "0"},
+                        "labor_date": None, "hct_anc": None, "has_dt": "0", "has_dental": "0"},
                        {"anc_id": "2", "hn": None, "age": None, "chwpart": None, "amppart": None, "tmbpart": None,
                         "moopart": None, "v_code": "3025", "register_date": "2026-01-05", "lmp": None,
-                        "labor_date": None, "hct_lab": None, "hct_anc": None, "has_dt": "0", "has_dental": "0"}]
+                        "labor_date": None, "hct_anc": None, "has_dt": "0", "has_dental": "0"}]
     rows = queries.pregnancies(D1, D2, load_config({"ANC_HCT_LAB_IDS": "6"}))
     assert [r["village"] for r in rows] == ["30250105", None]
     sql, _ = fake_fetch.calls[-1]
@@ -170,7 +191,7 @@ def test_lab_codes_by_name_when_not_set(fake_fetch):
 
 def test_pregnancy_kpi_flags(fake_fetch):
     base = {"anc_id": "1", "hn": "1", "age": "25", "chwpart": None, "amppart": None, "tmbpart": None, "moopart": None,
-            "register_date": "2026-01-05", "lmp": "2025-11-01", "labor_date": None, "hct_lab": None, "hct_anc": None,
+            "register_date": "2026-01-05", "lmp": "2025-11-01", "labor_date": None, "hct_anc": None,
             "has_dt": "0", "has_dental": "0", "has_iodine": "1", "q_cbc": "1", "q_thal": "0", "q_us": "1",
             "q_down": "1", "q_dm": "0"}
     fake_fetch.rows = [base]
@@ -195,7 +216,7 @@ def test_postnatal_dates(fake_fetch):
 def test_pregnancy_area_fields(fake_fetch):
     fake_fetch.rows = [{"anc_id": "1", "hn": "1", "age": "25", "chwpart": "30", "amppart": "25", "tmbpart": "01",
                         "moopart": "01", "register_date": "2026-01-05", "lmp": None, "labor_date": None,
-                        "hct_lab": None, "hct_anc": None, "has_dt": "0", "has_dental": "0", "nationality": "48",
+                        "hct_anc": None, "has_dt": "0", "has_dental": "0", "nationality": "48",
                         "labour_hospcode": "10894"}]
     r = queries.pregnancies(D1, D2, load_config({"ANC_HCT_LAB_IDS": "6", "ANC_CBC_LAB_CODES": "1",
                                                  "ANC_DM_LAB_CODES": "2"}))[-1]
@@ -209,7 +230,7 @@ def test_pregnancy_area_fields(fake_fetch):
 def test_pregnancy_outcome_fields(fake_fetch):
     fake_fetch.rows = [{"anc_id": "1", "hn": "1", "age": "25", "chwpart": None, "amppart": None, "tmbpart": None,
                         "moopart": None, "register_date": "2026-01-05", "lmp": None, "labor_date": None,
-                        "hct_lab": None, "hct_anc": None, "has_dt": "0", "has_dental": "0", "has_risk": "1",
+                        "hct_anc": None, "has_dt": "0", "has_dental": "0", "has_risk": "1",
                         "cx_htn": "1", "cx_gdm": "0", "cx_pph": "0", "cx_preterm": "1", "death_date": "2026-03-01",
                         "labour_place": "รพ.มทส."}]
     cfg = load_config({"ANC_HCT_LAB_IDS": "6", "ANC_CBC_LAB_CODES": "1", "ANC_DM_LAB_CODES": "2"})
