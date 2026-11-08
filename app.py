@@ -77,7 +77,7 @@ app.config.update(SESSION_COOKIE_NAME="anc_session", SESSION_COOKIE_HTTPONLY=Tru
                   SESSION_COOKIE_SECURE=os.getenv("ANC_COOKIE_SECURE", "0") == "1",
                   PERMANENT_SESSION_LIFETIME=8 * 3600)
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 DEV_CONTACT = "นายเผด็จชัย สิงหล โรงพยาบาลวังน้ำเขียว"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
