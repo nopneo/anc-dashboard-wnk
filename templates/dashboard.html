@@ -67,7 +67,9 @@
   <!-- ============================================================ filters -->
   <div class="filters">
     <span class="period">ช่วงข้อมูล <b>{{ d.period_label }}</b> · ตัวหาร{{ d.scope_label }}{% if d.nat %} · <b class="natflag">เฉพาะ{{ d.nat_label }}</b>{% endif %} · HOSxP (อ่านอย่างเดียว)
-      · บันทึกวันคลอด {{ fmt(d.labor.pct) }}{{ '%' if d.labor.pct is not none }} ของครรภ์ครบกำหนด</span>
+      · บันทึกวันคลอด {{ fmt(d.labor.pct) }}{{ '%' if d.labor.pct is not none }} ของครรภ์ครบกำหนด
+      {% if public_view %}<br><small class="pubnote" title="เครื่องในโรงพยาบาลหรือผู้ที่ login แล้วเห็นตัวเลขเต็ม">🔒 ข้อมูลสาธารณะ: ช่วงเวลาปัดเป็นเดือนเต็ม
+        · ผลตรวจ HIV / ซิฟิลิส / ตับอักเสบบี / สารเสพติด แม่อายุต่ำกว่า 15 ปี และการเสียชีวิต ที่มีน้อยกว่า 5 ราย แสดงเป็น “&lt;5”</small>{% endif %}</span>
     {% if not print_mode %}
     <span class="lbl">▼ ช่วงเวลา:</span>
     {% for p in presets %}
@@ -510,7 +512,7 @@
           <td class="n">{{ L('sti_' ~ t.key ~ '_test', t.tested.num ~ '/' ~ t.tested.den) }}</td>
           <td class="n">{{ rate(t.tested) }}</td>
           {% if t.key == 'nipt' %}<td class="n">–</td><td class="n">–</td><td class="n">–</td>
-          {% else %}<td class="n">{% if t.pos.num %}<b class="bad">{{ L('sti_' ~ t.key ~ '_pos', t.pos.num ~ '/' ~ t.pos.den, only='in') }}</b>{% else %}{{ L('sti_' ~ t.key ~ '_pos', t.pos.num ~ '/' ~ t.pos.den) }}{% endif %}</td>
+          {% else %}<td class="n">{% if t.pos.num and t.pos.num != '—' %}<b class="bad">{{ L('sti_' ~ t.key ~ '_pos', t.pos.num ~ '/' ~ t.pos.den, only='in') }}</b>{% else %}{{ L('sti_' ~ t.key ~ '_pos', t.pos.num ~ '/' ~ t.pos.den) }}{% endif %}</td>
           <td class="n">{{ rate(t.pos) }}</td>
           <td class="n">{{ t.unclear }}</td>{% endif %}
           <td class="n">{{ L('sti_' ~ t.key ~ '_test', t.untested, only='out') }}</td></tr>
