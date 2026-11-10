@@ -9,7 +9,7 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FILES = ["app.py", "cache.py", "check.py", "config.py", "db.py", "drill.py", "listing.py", "manage.py", "metrics.py",
-         "queries.py", "render.py", "risk27.py", "sti.py", "ogtt.py", "anemia.py", "store.py", "setup_check.py", "village_pcu.example.csv",
+         "queries.py", "render.py", "risk27.py", "sti.py", "ogtt.py", "anemia.py", "privacy.py", "store.py", "setup_check.py", "village_pcu.example.csv",
          "requirements.txt", ".env.example", "README.md", "INSTALL.md", "SECURITY.md", "CHANGELOG.md",
          "Dockerfile", ".dockerignore", "LICENSE", "NOTICE.md"]
 DIRS = ["templates", "static"]

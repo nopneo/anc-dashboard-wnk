@@ -33,6 +33,7 @@ import check
 import db
 import drill
 import listing
+import privacy
 import render
 import metrics
 import risk27
@@ -463,6 +464,31 @@ def _load_user():
     return g.user
 
 
+def _public_view():
+    """หน้าตัวเลขรวมที่คนนอก รพ. ดู (ไม่ได้อยู่ใน LAN และไม่ได้ login) → ปัดช่วงเป็นเดือนเต็มและซ่อนช่องอ่อนไหวที่น้อยกว่า 5
+    public=1 = บังคับโหมดสาธารณะ (ใช้ตอนส่งออกไฟล์ให้คนนอก เพราะ chromium เรียกหน้าเว็บจาก 127.0.0.1 ซึ่งนับเป็น LAN)"""
+    if not privacy.enabled():
+        return False
+    if request.args.get("public") == "1":
+        return True
+    if _from_lan():
+        return False
+    return not (list_enabled() and _load_user())
+
+
+def _public_range():
+    """(d1, d2, public) ของหน้าตัวเลขรวม"""
+    d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
+    public = _public_view()
+    if public:
+        d1, d2 = privacy.month_window(d1, d2)
+    return d1, d2, public
+
+
+def _public_ctx(ctx):
+    return privacy.public_ctx(ctx, lambda c: metrics.alerts(c["ind"], c["pcu"], c["age"], c["unmapped"], c["outcome"]))
+
+
 def audit(action, detail=None):
     store.log(g.user["username"] if g.get("user") else None, action, detail, _client_ip())
 
@@ -542,8 +568,9 @@ def logout():
 
 @app.route("/")
 def dashboard():
-    d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
-    return render_template("dashboard.html", d=build_context(d1, d2, request.args.get("scope", "area"), request.args.get("nat")),
+    d1, d2, public = _public_range()
+    ctx = build_context(d1, d2, request.args.get("scope", "area"), request.args.get("nat"))
+    return render_template("dashboard.html", d=_public_ctx(ctx) if public else ctx, public_view=public,
                            labels=metrics.IND_LABELS, scopes=SCOPES, nats=NATS,
                            print_mode=request.args.get("print") == "1", presets=range_presets(), fy_opts=fy_options(),
                            today_label=thai_full_date(date.today()))
@@ -556,7 +583,7 @@ _fy3_jobs, _fy3_done, _fy3_lock = {}, {}, threading.Lock()
 @app.route("/fy3")
 def fy3_fragment():
     """ตารางแนวโน้ม 3 ปีงบ — ดึงแยกหลังหน้าหลักโหลดเสร็จ (ดึงข้อมูล 3 ปีใช้เวลานานกว่าเวลารอของ proxy)"""
-    d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
+    d1, d2, _ = _public_range()                                     # สาธารณะ: ปีงบปัจจุบันนับถึงสิ้นเดือน ไม่ใช่รายวัน
     cfg = load_config()
     scope = request.args.get("scope", "area")
     scope = scope if scope in SCOPES else "area"
@@ -584,8 +611,10 @@ def fy3_fragment():
 
 @app.route("/api/data.json")
 def api_data():
-    d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
+    d1, d2, public = _public_range()
     ctx = build_context(d1, d2, request.args.get("scope", "area"), request.args.get("nat"))
+    if public:
+        ctx = _public_ctx(ctx)
     return app.response_class(json.dumps(ctx, ensure_ascii=False, default=str),
                               mimetype="application/json")
 
@@ -690,14 +719,15 @@ def export(fmt):
     """ส่งออกหน้าแดชบอร์ดเป็น PNG / JPG / PDF ด้วย chromium headless (เรียกหน้าเดิมด้วย ?print=1 — ไม่มีแถบเตือน)"""
     if fmt not in MIME or not EXPORT_ENABLED:
         return {"error": "รองรับเฉพาะ png, jpg, pdf" if EXPORT_ENABLED else "ปิดการส่งออกไฟล์"}, 404
-    d1, d2 = _range_from(request.args.get("d1"), request.args.get("d2"))
+    d1, d2, public = _public_range()
     scope = request.args.get("scope") if request.args.get("scope") in SCOPES else "area"
     nat = request.args.get("nat") if request.args.get("nat") in NATS else None
     qs = urllib.parse.urlencode({"d1": d1.isoformat(), "d2": d2.isoformat(), "scope": scope, "print": "1",
-                                 **({"nat": nat} if nat else {})})
+                                 **({"nat": nat} if nat else {}), **({"public": "1"} if public else {})})
     url = f"http://127.0.0.1:{os.getenv('PORT', '6300')}/?{qs}"
     name = f"anc_{d1}_{d2}{'' if scope == 'area' else '_all'}{'_' + nat if nat else ''}.{fmt}"
-    blob = _export_cache.get(name, EXPORT_CACHE_TTL)
+    cache_key = name + ("|public" if public else "")                # ไฟล์ของคนนอกต้องไม่ได้ฉบับเต็มจาก cache
+    blob = _export_cache.get(cache_key, EXPORT_CACHE_TTL)
     if blob is not None:
         return send_file(BytesIO(blob), mimetype=MIME[fmt], as_attachment=True, download_name=name)
     if not _render_lock.acquire(timeout=EXPORT_WAIT):
@@ -707,7 +737,7 @@ def export(fmt):
             out = os.path.join(tmp, name)
             render.render_to(fmt, url, out)
             blob = open(out, "rb").read()
-        _export_cache.set(name, blob)
+        _export_cache.set(cache_key, blob)
         return send_file(BytesIO(blob), mimetype=MIME[fmt], as_attachment=True, download_name=name)
     except Exception as e:
         app.logger.exception("export failed")
