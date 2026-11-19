@@ -106,7 +106,7 @@ copy .env.example .env ; notepad .env
 | `ANC_VILLAGE_CSV` | ไฟล์หมู่บ้าน → รพ.สต. (ค่าเริ่มต้น `village_pcu.csv`) — รูปแบบเดียวกับ mental_health_dashboard |
 | `ANC_CHWPART`, `ANC_AMPPART` | จังหวัด/อำเภอของ รพ. (ค่าเริ่มต้น 30/25) — ที่อยู่นอกอำเภอนับเป็น “นอกเขตอำเภอ” |
 | `ANC_HOSPCODE` | รหัส 5 หลักของ รพ. (ค่าเริ่มต้น 10894) — หมู่ที่ รพ. ดูแลเองเป็นแถว “เขต รพ.” |
-| `ANC_LAN_NETS`, `ANC_CHECK_OPEN` | ใครเปิดหน้า `/check` ได้ |
+| `ANC_LAN_NETS`, `ANC_CHECK_OPEN` | ใครเปิดหน้า `/check` ได้ — `ANC_LAN_NETS` ใส่เฉพาะ IP สาธารณะจริงของ รพ. (เข้าผ่าน Cloudflare) ห้ามใส่ IP บ้าน · เครื่อง `192.168.x.x` นับเป็น LAN อยู่แล้ว · ทางที่แนะนำคือทางเข้าภายใน (ข้อ 6.1) |
 | `ANC_PUBLIC_MIN_CELL` | คนนอก รพ. ที่ไม่ได้ login เห็นช่วงเวลาเป็นเดือนเต็ม และช่องอ่อนไหวที่น้อยกว่าค่านี้เป็น “<5” (ค่าเริ่มต้น 5 · 0 = ปิด) — ต้องตั้ง `ANC_TRUSTED_PROXIES` / `ANC_LAN_NETS` ให้ถูก ไม่งั้นคนนอกอาจถูกนับเป็น LAN |
 
 ### หน้ารายชื่อ (ไม่บังคับ)
@@ -162,6 +162,47 @@ ProxyPassReverse /anc/ http://127.0.0.1:6300/
   RequestHeader set X-Forwarded-Proto "https"
 </Location>
 ```
+
+### 6.1 ทางเข้าภายใน รพ. (โดเมนย่อยที่ชี้ IP ภายใน — แนะนำสำหรับหน้ารายชื่อ)
+
+ทางสาธารณะ (เช่น `https://<โดเมน รพ.>/anc/` ผ่าน Cloudflare) ให้คนนอกเห็นเฉพาะตัวเลขรวมแบบรายเดือน (ช่องอ่อนไหวที่น้อยกว่า 5 แสดง “<5”) · ทางเข้าภายในเป็นโดเมนย่อยอีกชื่อที่ DNS ชี้ไป **IP ภายใน** ของเครื่องแอป
+เบราว์เซอร์ในโรงพยาบาลจึงต่อตรงถึงเครื่องแอป ไม่ผ่าน Cloudflare/อินเทอร์เน็ต — Apache ส่ง IP จริงของเครื่องเจ้าหน้าที่ (`192.168.x.x`) ต่อให้แอป
+แอปนับเป็นเครื่องใน รพ. เอง (เห็นตัวเลขเต็ม เลือกช่วงวันที่ได้อิสระ และเปิดหน้ารายชื่อได้หลัง login) และจากอินเทอร์เน็ตเปิดไม่ได้เพราะ IP ภายในใช้จากข้างนอกไม่ได้ — ใช้จากนอก รพ. ให้ต่อ VPN ของ รพ. (ห้ามเพิ่ม IP บ้าน)
+
+**ตัวอย่าง รพ.วังน้ำเขียว:** `https://lan.wnkhos.go.th/anc/` (DNS → `192.168.11.40`) · หน้าแรก `https://lan.wnkhos.go.th/` มีลิงก์ระบบภายในทุกตัว
+
+1. **DNS:** เพิ่ม A record เช่น `lan` → IP ภายในของเครื่องแอป · ใน Cloudflare ต้องเป็น **DNS only (เมฆสีเทา)** — เปิด proxy (เมฆสีส้ม) แล้วใช้ไม่ได้
+   (resolver/เราเตอร์บางรุ่นมี DNS rebinding protection ที่ไม่ตอบ IP ภายใน — ทดสอบจากเครื่องใน รพ. ทั้ง DNS ของ ISP และ 8.8.8.8)
+2. **ใบรับรอง:** Let's Encrypt แบบ HTTP-01 ออกให้ไม่ได้ (ข้างนอกเข้าถึง IP ภายในไม่ได้) — ใช้ DNS-01 ผ่าน Cloudflare (ฟรี ต่ออายุอัตโนมัติ):
+   ```bash
+   dnf install certbot python3-certbot-dns-cloudflare        # หรือ apt install python3-certbot-dns-cloudflare
+   # /root/.secrets/cloudflare.ini (chmod 600): dns_cloudflare_api_token = <token สิทธิ์ Zone:DNS:Edit เฉพาะโดเมนนี้>
+   certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/cloudflare.ini -d lan.<โดเมน รพ.>
+   ```
+3. **Apache:** vhost แยก (เช่น `/etc/httpd/conf.d/zz-lan-443.conf`) จำกัดให้เฉพาะ IP ภายใน แล้วส่งต่อแบบเดียวกับทางสาธารณะ
+   (ใช้ vhost เดียวรวมทุกแอปภายในได้ — เพิ่ม `ProxyPass` ของแต่ละแอปต่อกัน):
+   ```apache
+   <VirtualHost *:443>
+       ServerName lan.<โดเมน รพ.>
+       SSLEngine on
+       SSLCertificateFile    /etc/letsencrypt/live/lan.<โดเมน รพ.>/fullchain.pem
+       SSLCertificateKeyFile /etc/letsencrypt/live/lan.<โดเมน รพ.>/privkey.pem
+       <Location />
+           Require ip 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.1
+       </Location>
+       ProxyPreserveHost On
+       RequestHeader set X-Forwarded-Proto "https"
+       ProxyPass        /anc/ http://127.0.0.1:6300/
+       ProxyPassReverse /anc/ http://127.0.0.1:6300/
+       <Location /anc/>
+           RequestHeader set X-Forwarded-Prefix "/anc"
+       </Location>
+       RedirectMatch ^/anc$ /anc/
+   </VirtualHost>
+   ```
+   `httpd -t` ผ่านแล้วค่อย `systemctl reload httpd`
+4. **`.env`:** คง `ANC_LIST_LAN_ONLY=1` (หน้ารายชื่อ/login เปิดได้เฉพาะเครื่องใน รพ.) · `ANC_LAN_NETS` เหลือเฉพาะ IP สาธารณะจริงของ รพ. (ถ้ายังให้เปิดผ่าน Cloudflare จากใน รพ. ได้) หรือเว้นว่าง — **ห้ามใส่ IP บ้าน/มือถือ** (เปลี่ยนเรื่อย ๆ) · ตั้ง `ANC_COOKIE_SECURE=1`
+5. **ทดสอบ:** จากเครื่องใน รพ. เปิด `https://lan.<โดเมน รพ.>/anc/` แล้วต้องไม่มีแถบ 🔒 “ข้อมูลสาธารณะ” และเปิดหน้า login ได้ · จากมือถือที่ใช้เน็ตมือถือ (ปิด Wi-Fi/VPN) ต้องเปิดไม่ได้
 
 ## 7. Docker
 
