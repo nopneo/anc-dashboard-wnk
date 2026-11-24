@@ -63,7 +63,8 @@ After=network.target
 User=ancdash
 Group=ancdash
 WorkingDirectory=/opt/anc_dashboard
-ExecStart=/opt/anc_dashboard/.venv/bin/gunicorn --bind 0.0.0.0:6300 --workers 2 --threads 8 --timeout 120 \
+# ฟังเฉพาะ 127.0.0.1 หลัง Apache — ห้าม 0.0.0.0 (เครื่องใน LAN จะต่อพอร์ตตรงโดยไม่ผ่าน Apache) · เครื่องใน รพ. ใช้โดเมนภายใน
+ExecStart=/opt/anc_dashboard/.venv/bin/gunicorn --bind 127.0.0.1:6300 --workers 2 --threads 8 --timeout 120 \
   --access-logfile - --access-logformat '%(t)s %(m)s %(U)s %(s)s %(L)ss' app:app
 Restart=always
 Environment=HOME=/var/lib/ancdash
@@ -123,7 +124,7 @@ python manage.py users | passwd <ชื่อ> | disable <ชื่อ> | audit 
 - บัญชีและ audit log อยู่ที่ `data/anc.sqlite` (`ANC_DATA_DIR`) — สำรองไฟล์นี้ · ผู้ใช้ที่รัน service ต้องเขียนโฟลเดอร์นี้ได้
 - **โหมด passkey** (รหัสกลางตัวเดียว ไม่ต้องมีบัญชีรายคน): ตั้ง `ANC_LIST_PASSKEY=1` + `ANC_LIST_LAN_ONLY=1` แล้ว `python manage.py passkey`
   — audit log บันทึกเป็น `passkey` + IP เท่านั้น ระบุตัวคนไม่ได้ · เปลี่ยนรหัสเมื่อมีคนย้ายออก (รันคำสั่งเดิมซ้ำ)
-- เปิดผ่าน https ให้ตั้ง `ANC_COOKIE_SECURE=1` · อยากให้เปิดได้เฉพาะใน รพ. ตั้ง `ANC_LIST_LAN_ONLY=1`
+- เปิดผ่าน https ให้ตั้ง `ANC_COOKIE_SECURE=1` · หน้ารายชื่อ/login เปิดได้เฉพาะใน รพ. เป็นค่าเริ่มต้น (`ANC_LIST_LAN_ONLY=1`) — `0` = เปิดจากที่ใดก็ได้ (ไม่แนะนำ)
 - Docker: mount `data/` เป็น volume (`-v anc-data:/app/data`) ไม่งั้นบัญชีหายเมื่อสร้าง container ใหม่
 - ไม่ตั้ง `ANC_SECRET_KEY` = ไม่มีหน้า login/รายชื่อ แดชบอร์ดตัวเลขใช้ได้ตามเดิม
 
