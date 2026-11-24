@@ -1,7 +1,7 @@
 """ANC Dashboard — แดชบอร์ดงานฝากครรภ์ (HOSxP · นิยามตาม 43 แฟ้ม)
 
 รันเอง:      python app.py            → http://127.0.0.1:6300/
-production:  gunicorn -b 0.0.0.0:6300 app:app   (ออกผ่าน sub-path เช่น /anc/)
+production:  gunicorn -b 127.0.0.1:<PORT> app:app หลัง Apache (sub-path เช่น /anc/) — ห้ามเปิด 0.0.0.0
 """
 
 import csv
@@ -55,14 +55,16 @@ class PrefixMiddleware:
         self.wsgi_app = wsgi_app
 
     def __call__(self, environ, start_response):
-        prefix = environ.get("HTTP_X_FORWARDED_PREFIX", "")
+        # เชื่อ header เฉพาะจาก reverse proxy บนเครื่องเดียวกัน (TRUSTED_PROXIES) — เครื่องที่ต่อพอร์ตแอปตรงแก้ลิงก์ไม่ได้
+        trusted = environ.get("REMOTE_ADDR", "") in TRUSTED_PROXIES
+        prefix = environ.get("HTTP_X_FORWARDED_PREFIX", "") if trusted else ""
         # รับเฉพาะ path ภายใน เช่น /anc — กันคนส่ง header ปลอม (//evil.example) ให้ลิงก์ชี้ออกนอกเว็บ
         if prefix and _PREFIX_RE.fullmatch(prefix):
             environ["SCRIPT_NAME"] = prefix.rstrip("/")
             path = environ.get("PATH_INFO", "")
             if path.startswith(prefix):
                 environ["PATH_INFO"] = path[len(prefix):] or "/"
-        proto = environ.get("HTTP_X_FORWARDED_PROTO")
+        proto = environ.get("HTTP_X_FORWARDED_PROTO") if trusted else None
         if proto in ("http", "https"):
             environ["wsgi.url_scheme"] = proto
         return self.wsgi_app(environ, start_response)
@@ -388,6 +390,9 @@ def _nets(spec):
 CF_NETS = _nets(os.getenv("ANC_CF_RANGES", _CF_DEFAULT))
 #: เครือข่ายเพิ่มเติมที่นับเป็น "ใน รพ." (เช่น IP สาธารณะของ รพ. เมื่อเข้าผ่าน Cloudflare)
 LAN_NETS = _nets(os.getenv("ANC_LAN_NETS", ""))
+#: IP ภายในมาตรฐาน — ระบุเอง ไม่ใช้ ip.is_private ที่นับช่วงสาธารณะบางช่วงเป็น private ด้วย
+#: (เช่น 198.18.0.0/15, 203.0.113.0/24)
+PRIVATE_NETS = _nets("10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,::1/128,fc00::/7")
 
 
 def _is_cf(ip):
@@ -415,11 +420,13 @@ def _from_lan():
         ip = ipaddress.ip_address((_client_ip() or "").strip())
     except ValueError:
         return False
+    if getattr(ip, "ipv4_mapped", None):
+        ip = ip.ipv4_mapped
     if any(ip in n for n in LAN_NETS):
         return True
     if request.headers.get("CF-Connecting-IP", "").strip():
         return False
-    return ip.is_private or ip.is_loopback
+    return any(ip in n for n in PRIVATE_NETS)
 
 
 def _check_allowed():
@@ -451,10 +458,11 @@ def list_enabled():
 
 
 def _list_gate():
-    """หน้ารายชื่อ/login: ปิดเมื่อไม่ตั้ง ANC_SECRET_KEY · ANC_LIST_LAN_ONLY=1 = เข้าได้เฉพาะเครื่องใน รพ."""
+    """หน้ารายชื่อ/login: ปิดเมื่อไม่ตั้ง ANC_SECRET_KEY · เข้าได้เฉพาะเครื่องใน รพ. เป็นค่าเริ่มต้น
+    (ชื่อผู้ป่วยฝากครรภ์ต้องไม่ออกอินเทอร์เน็ต) — ANC_LIST_LAN_ONLY=0 เพื่อปิดข้อจำกัดนี้เอง (ไม่แนะนำ)"""
     if not list_enabled():
         abort(404)
-    if os.getenv("ANC_LIST_LAN_ONLY", "0") == "1" and not _from_lan():
+    if os.getenv("ANC_LIST_LAN_ONLY", "1") != "0" and not _from_lan():
         abort(403)
 
 
